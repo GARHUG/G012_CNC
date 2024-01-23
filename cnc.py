@@ -154,7 +154,7 @@ class Axis:
 
     @property
     def macro(self):
-        pass
+        return None
 
     @macro.setter
     def macro(self, macro):
@@ -182,7 +182,7 @@ class WorkCoordinates:
         else:
             self.__coordinates[key] = value
 
-    def reset(self) -> dict:
+    def reset(self):
         wc = {}
         for i in range(53, 60):
             wc[i] = [0, 0, 0, 0, 0]

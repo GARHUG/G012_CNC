@@ -42,6 +42,10 @@ class Axis:
         # コメント削除
         block = self.__remove_comment(block)
 
+        # プログラム先頭でリセット
+        if "O" in block:
+            self.reset()
+
         # group3モーダル
         if gr3 := re.search(".*G(9[01])[^0-9]?", block):
             self.__gr3 = self.__stf(gr3.group(1))

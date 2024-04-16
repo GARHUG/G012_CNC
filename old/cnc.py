@@ -16,10 +16,10 @@ class Macro:
     def __init__(self):
         ...
 
-    def string_to_froat(self, value: str, micron: bool = False) -> float:
+    def string_to_float(self, value: str, micron: bool = False) -> float:
         ...
 
-
+#
 class Axis:
     def __init__(self, macro: Macro = None):
         self.__macro = macro
@@ -100,7 +100,7 @@ class Axis:
         if self.macro is None:
             return float(value)
         else:
-            return self.__macro.string_to_froat(value)
+            return self.__macro.string_to_float(value)
 
     @staticmethod
     def __remove_comment(block):
@@ -148,7 +148,7 @@ class Axis:
         return self.__gr14
 
     @property
-    def is_movement(self) -> tuple:
+    def is_movement(self):
         return (last != now for last, now in
                 zip(self.__position, self.__last_position))
 
@@ -159,10 +159,9 @@ class Axis:
     @macro.setter
     def macro(self, macro):
         if not isinstance(macro, Macro):
-            raise ValueError("argment, is not Macro instance")
+            raise ValueError("argument, is not Macro instance")
         if self.__macro is not None:
             raise ValueError("this attribute cannot be set twice")
-
         self.__macro = macro
 
 

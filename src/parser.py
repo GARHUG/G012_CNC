@@ -12,3 +12,6 @@ class Parser:
 
     def cycle_start(self):
         ...
+
+    def parse(self):
+        ...

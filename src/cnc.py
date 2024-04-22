@@ -18,6 +18,6 @@ class CNC:
     def input_parameter(self, num: int, parameter: tuple):
         ...
 
-    def cycle_stert(self, num: int) -> Generator:
+    def cycle_start(self, num: int) -> Generator:
         for state in self.parser.cycle_start(num):
             yield state

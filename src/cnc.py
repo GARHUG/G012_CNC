@@ -1,13 +1,13 @@
 from typing import Generator
 
 from state import State
-from parser import Parser
+from reader import Reader
 
 
 class CNC:
     def __init__(self):
         self.state = State()
-        self.parser = Parser(self.state)
+        self.reader = Reader(self.state)
 
     def input_programs(self, programs: str):
         ...

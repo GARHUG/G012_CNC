@@ -9,6 +9,49 @@ class Parser:
     def __init__(self, state: State):
         self.state = state
 
+    @staticmethod
+    def remove_comments(block: str) -> str:
+        is_in_comments = False
+        result = ""
+        for s in block:
+            if s == "(":
+                is_in_comments = True
+            elif s == ")":
+                is_in_comments = False
+            elif is_in_comments:
+                pass
+            else:
+                result += s
+        return result
+
+    @classmethod
+    def is_macro(cls, block: str) -> bool:
+        block = cls.remove_comments(block)
+        if "=" in block:
+            return True
+        elif "GOTO" in block:
+            return True
+        elif "IF" in block:
+            return True
+        elif "WHILE" in block:
+            return True
+        else:
+            return False
+
+    @classmethod
+    def is_formula(cls, block: str) -> str:
+        ...
+
+
+class Reader:
+    def __init__(self, state: State):
+        self.state = state
+        self.parser = Parser(state)
+        self.index = 0
+
+    def next(self):
+        ...
+
     def cycle_start(self):
         ...
 
@@ -18,13 +61,7 @@ class Parser:
 
 
 
-class Reader:
-    def __init__(self, num: int, state: State):
-        self.state = state
-        self.num = num
-        self.index = 0
 
-    def next(self):
 
 
 class SyntaxChecker:

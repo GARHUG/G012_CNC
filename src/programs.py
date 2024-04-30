@@ -3,7 +3,7 @@ class Programs:
         self.programs = {}
 
     def input_programs(self, programs: str):
-        def is_in_com(program: str):
+        def split_in_comment(program: str) -> bool:
             for s in program:
                 if s == ")":
                     return True
@@ -16,17 +16,20 @@ class Programs:
 
         # コメント内で分割してた場合は結合
         for program in split_o:
-            if is_in_com(program):
+            if split_in_comment(program):
                 index = split_o.index(program)
                 split_o[index - 1] += split_o[index]
                 split_o.pop(index)
 
         # プログラムナンバーを取得しself.programsに追加
         for program in split_o:
-            num_str = ""
-            for s in program[1:]:
-                if s in {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}:
-                    num_str += s
-                else:
-                    break
-            self.programs[int(num_str)] = program
+            self.programs[int(program[1:5])] = program.splitlines()
+
+    def is_exist(self, num: int):
+        return num in self.programs.keys()
+
+    def read(self, num: int) -> list:
+        return self.programs[num]
+
+    def read_line(self, num: int, line: int) -> str:
+        return self.programs[num][line]

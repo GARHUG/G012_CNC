@@ -1,13 +1,18 @@
 from typing import Generator
 
-from state import State
-from reader import Reader
+from programs import Programs
+from parameters import Parameters
+from positions import Positions
+from coordinates import Coordinates
+from tool_settings import ToolSettings
+from variables import Variables
+from parser import Parser
 
 
 class CNC:
     def __init__(self):
         self.state = State()
-        self.reader = Reader(self.state)
+        self.parser = Parser(self.state)
 
     def input_programs(self, programs: str):
         ...
@@ -19,5 +24,15 @@ class CNC:
         ...
 
     def cycle_start(self, num: int) -> Generator:
-        for state in self.parser.cycle_start(num):
-            yield state
+        for changes in self.parser.cycle_start(num):
+            yield changes
+
+
+class State:
+    def __init__(self):
+        self.programs = Programs()
+        self.parameters = Parameters()
+        self.Positions = Positions()
+        self.coordinates = Coordinates()
+        self.tool_settings = ToolSettings()
+        self.variables = Variables()

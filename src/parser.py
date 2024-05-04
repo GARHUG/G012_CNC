@@ -76,14 +76,10 @@ class Parser:
     @classmethod
     def is_macro(cls, block: str) -> bool:
         # 先にself.prepare(block)使用の事
-        if "=" in block:
-            return True
-        elif "GOTO" in block:
-            return True
-        elif "IF" in block:
-            return True
-        elif "WHILE" in block:
-            return True
+        keywords = {"=", "GOTO", "IF", "WHILE", "DO", "END"}
+        for keywoed in keywords:
+            if keywoed in block:
+                return True
         else:
             return False
 
@@ -175,6 +171,7 @@ class Reader:
                                 break
                         else:
                             raise MissingSequenceNCError(goto)
+
 
             # Gコード
             else:

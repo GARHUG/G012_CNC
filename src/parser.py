@@ -69,16 +69,20 @@ class Parser:
     def all_solve(cls, block: str) -> str:
         ...
 
-    @classmethod
-    def solve(cls, val: str) -> float:
+    @staticmethod
+    def solve(val: str) -> float:
+        ...
+
+    @staticmethod
+    def solve_bool(formula: str) -> bool:
         ...
 
     @classmethod
     def is_macro(cls, block: str) -> bool:
         # 先にself.prepare(block)使用の事
         keywords = {"=", "GOTO", "IF", "WHILE", "DO", "END"}
-        for keywoed in keywords:
-            if keywoed in block:
+        for keyword in keywords:
+            if keyword in block:
                 return True
         else:
             return False
@@ -87,7 +91,7 @@ class Parser:
         # self.prepare(block)使用の事
         pattern = re.search(".*(M98|G65|G66)([^0-9]|$)", block).group(1)
         # arg_p = re.search(".*(M98|G65|G66)([^0-9]|$)", block).group(1)
-        self.state.variables.add_local()
+        self.state.variables.create_variables()
         if pattern in {"G65", "G66"}:
             args_address_key = {("A", 1), ("B", 1), ("C", 3),
                             ("I", 4), ("J", 5), ("K", 6),
@@ -136,44 +140,70 @@ class Parser:
 
 
 class Reader:
-    def __init__(self, parser: Parser):
-        self.parser = parser
-        self.index = []
-        self.g66_block = None
+    MAX_DEPTH = 100
 
-    def cycle_start(self, program_num: int) -> Generator:
-        self.index = [{"program": program_num, "row": 0}]
+    def __init__(self, depth: int, parser: Parser):
+        if Reader.MAX_DEPTH < depth:
+            raise DepthOverNCError(Reader.MAX_DEPTH)
+        self.depth = 0
+        self.parser = parser
+        self.program = 0
+        self.index = 0
+
+        self.g66_block_memo = None
+        self.loop_num_memo = None
+
+    def cycle_start(self, program: int, index: int) -> Generator:
+        self.program = program
+        self.index = index
         for block in self.next():
             yield block
 
     def next(self) -> Generator:
         while True:
-            index = self.index[-1]
-            block = self.parser.state.programs.read_block(index["program"], index["row"])
+            block = self.parser.state.programs.read_block(self.program, self.index)
             block = Parser.prepare(block)
+            index = [self.index]
 
-            # マクロ
+            # macro
             if Parser.is_macro(block):
                 # GOTO
                 if pat_goto := re.search("GOTO([0-9]+)", block):
                     goto = int(pat_goto.group(1))
-                    for i, block in enumerate(self.parser.state.programs.read()[
-                                              self.index[-1]["row"] + 1:]):
+                    for i, block in enumerate(self.parser.state.programs.read(self.program)[
+                                              self.index + 1:]):
                         block = Parser.prepare(block)
                         if goto == Parser.n_from_block(block):
-                            self.index[-1]["row"] += i
+                            self.index += i
                             break
                     else:
-                        for i, block in enumerate(self.parser.state.programs.read()[:self.index[-1]["row"]]):
+                        for i, block in enumerate(
+                                self.parser.state.programs.read()[
+                                :self.index]):
                             block = Parser.prepare(block)
                             if goto == Parser.n_from_block(block):
-                                self.index[-1]["row"] = i
+                                self.index = i
                                 break
                         else:
                             raise MissingSequenceNCError(goto)
 
+                # IF
+                elif ...:
+                    ...
 
-            # Gコード
+                # WHILE
+                elif ...:
+                    ...
+
+                # END
+                elif ...:
+                    ...
+
+                # =
+                elif ...:
+                    ...
+
+            # Gcode
             else:
                 # 空行
                 if len(block) == 0:
@@ -185,21 +215,31 @@ class Reader:
 
                 # M99
                 elif re.search(".*M99([^0-9]|$)", block):
-                    if len(self.index) == 1:
-                        self.index[0]["row"] = 0
+                    if self.depth == 0:
                         yield block
+                        self.index = 0
                     else:
-                        self.index.pop()
                         return block
 
-                # サブプログラム呼び出し
-                elif re.search(".*(M98|G65|G66)([^0-9]|$)", block):
+                # M98 G65 G66
+                elif pat := re.search(".*(M98|G65|G66)([^0-9]|$)", block):
                     for block in self.call_subprogram(block):
+                        yield block
+                    if pat.group(1) == "G66":
+                        self.g66_block_memo = block
+
+                else:
+                    yield block
+
+                # G66 modal
+                if self.parser.state.variables.read(4012) == 66:
+                    for block in self.call_subprogram(self.g66_block_memo):
                         yield block
 
 
 
-            self.index[-1]["row"] += 1
+
+
 
     def call_subprogram(self, block: str) -> Generator:
         # p=プログラム番号
@@ -215,29 +255,14 @@ class Reader:
 
         # 1回目
         yield block
-        self.index[-1]["row"] += 1
-        self.index.append({"program": p, "row": 0})
-        for block in self.next():
+        for block in Reader(self.depth + 1, self.parser).cycle_start(p, 0):
             yield block
+
         # 2回目以降
         for i in range(l - 1):
             self.parser.call_subprogram(block)
-            self.index.append({"program": p, "row": 0})
-            for block in self.next():
+            for block in Reader(self.depth + 1, self.parser).cycle_start(p, 0):
                 yield block
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class MacroInMDINCError(Exception):
@@ -267,6 +292,14 @@ class MissingSequenceNCError(Exception):
 
     def __str__(self):
         return f"シーケンス番号{self.arg}が見つかりません．"
+
+
+class DepthOverNCError(Exception):
+    def __init__(self, arg: int):
+        self.arg = arg
+
+    def __str__(self):
+        return f"呼び出し回数が{self.arg}回を超えました．"
 
 
 

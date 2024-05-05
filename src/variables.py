@@ -107,6 +107,12 @@ class System:
     def write(self, key: int, val: float):
         self.vals[key] = val
 
+    def copy(self):
+        new_system = System()
+        for key, val in self.vals:
+            new_system.write(key, val)
+        return new_system
+
 
 class Variables:
     def __init__(self):
@@ -114,10 +120,10 @@ class Variables:
         self.common100 = Common100()
         self.common500 = Common500()
         self.custom = Custom()
-        self.system = System()
+        self.system = [System()]
 
     def is_exist(self, key) -> bool:
-        if self.local[0].is_exist(key):
+        if self.local[-1].is_exist(key):
             return True
         elif self.common100.is_exist(key):
             return True
@@ -125,7 +131,7 @@ class Variables:
             return True
         elif self.custom.is_exist(key):
             return True
-        elif self.system.is_exist(key):
+        elif self.system[-1].is_exist(key):
             return True
         else:
             return False
@@ -139,14 +145,14 @@ class Variables:
             return self.common500.read(key)
         elif self.custom.is_exist(key):
             return self.custom.read(key)
-        elif self.system.is_exist(key):
-            return self.system.read(key)
+        elif self.system[-1].is_exist(key):
+            return self.system[-1].read(key)
         else:
             raise VariableKeyNCError
 
     def write(self, key: int, val: float):
         if not isinstance(val, (int, float)):
-            raise ValueNCError
+            raise VariableValueNCError
         if self.local[-1].is_exist(key):
             return self.local[-1].write(key, val)
         elif self.common100.is_exist(key):
@@ -155,15 +161,17 @@ class Variables:
             return self.common500.write(key, val)
         elif self.custom.is_exist(key):
             return self.custom.write(key, bool(val))
-        elif self.system.is_exist(key):
-            return self.system.write(key, val)
+        elif self.system[-1].is_exist(key):
+            return self.system[-1].write(key, val)
         else:
             raise VariableKeyNCError(key)
 
-    def add_local(self):
+    def create_variables(self):
         self.local.append(Local())
+        self.system.append(self.system[-1].copy())
+        self.system[-1].write(4012, 67)
 
-    def remove_local(self):
+    def remove_variables(self):
         self.local.pop()
         if not self.local:
             self.local.append(Local())
@@ -172,6 +180,7 @@ class Variables:
 class VariableKeyNCError(Exception):
     def __init__(self, arg):
         self.arg = arg
+
     def __str__(self):
         return f"キー{self.arg}は無効です．"
 
@@ -179,5 +188,6 @@ class VariableKeyNCError(Exception):
 class VariableValueNCError(Exception):
     def __init__(self, arg):
         self.arg = arg
+
     def __str__(self):
         return f"値{self.arg}は無効です．"

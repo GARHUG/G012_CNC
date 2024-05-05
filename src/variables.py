@@ -109,8 +109,9 @@ class System:
 
     def copy(self):
         new_system = System()
-        for key, val in self.vals:
+        for key, val in self.vals.items()[: 20]:
             new_system.write(key, val)
+        new_system.write(4012, 67)
         return new_system
 
 
@@ -166,12 +167,12 @@ class Variables:
         else:
             raise VariableKeyNCError(key)
 
-    def create_variables(self):
+    def create_local_system(self, program_num: int):
         self.local.append(Local())
         self.system.append(self.system[-1].copy())
-        self.system[-1].write(4012, 67)
+        self.system[-1].write(4015, program_num)
 
-    def remove_variables(self):
+    def remove_local_system(self):
         self.local.pop()
         if not self.local:
             self.local.append(Local())

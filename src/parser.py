@@ -1,7 +1,7 @@
 import re
 from typing import Generator
 
-from cnc import State
+from cnc import State, MetaError
 from programs import Programs, InvalidProgramNumberNCError
 from variables import Variables
 
@@ -12,6 +12,7 @@ class Parser:
         self.g66_arg = []
 
     def mdi(self, program: str) -> tuple:
+        program = program.splitlines(program)
         for block in program:
             if self.is_macro(block):
                 raise MacroInMDINCError
@@ -80,7 +81,7 @@ class Parser:
     @classmethod
     def is_macro(cls, block: str) -> bool:
         # 先にself.prepare(block)使用の事
-        keywords = {"=", "GOTO", "IF", "WHILE", "DO", "END"}
+        keywords = {"GOTO", "IF", "WHILE", "DO", "END"}
         for keyword in keywords:
             if keyword in block:
                 return True
@@ -90,27 +91,11 @@ class Parser:
     def call_subprogram(self, block: str):
         # self.prepare(block)使用の事
         pattern = re.search(".*(M98|G65|G66)([^0-9]|$)", block).group(1)
-        # arg_p = re.search(".*(M98|G65|G66)([^0-9]|$)", block).group(1)
-        self.state.variables.create_variables()
+        p = re.search(".*P([0-9]+)", block).group(1)
+        self.state.variables.create_local_system(p)
         if pattern in {"G65", "G66"}:
-            args_address_key = {("A", 1), ("B", 1), ("C", 3),
-                            ("I", 4), ("J", 5), ("K", 6),
-                            ("D", 7), ("E", 8), ("F", 9),
-                            ("H", 11), ("M", 13), ("Q", 17),
-                            ("R", 18), ("S", 19), ("T", 20),
-                            ("U", 21), ("V", 22), ("W", 23),
-                            ("X", 24), ("Y", 25), ("Z", 26)}
-            block_list = re.findall("([A-Z])([^A-Z]+)", block)
-            used_arg_address = {e[0] for e in block_list}
-
-            # all args
-            if used_arg_address.intersection({e[0] for e in args_address_key}.difference({"A", "B", "C", "I", "J", "K"})):
-                for add, key in args_address_key:
-                    if p := re.search(f".*{add}([^A-Z]+)", block):
-                        self.state.variables.write(key, p.group(1))
-
             # A B C I J K only args
-            else:
+            if Parser.is_ijk_args(block):
                 ijk_counter = [0, 0, 0]  # [I, J, K]
                 for add, val in re.findall("([ABDIJK])([^A-Z])"):
                     if add == "A":
@@ -128,64 +113,77 @@ class Parser:
                     if add == "J":
                         key = ijk_counter[0] * 3 + 5
                         if 33 < key:
-                            raise OverFlowingArgumentNCError("I")
+                            raise OverFlowingArgumentNCError("J")
                         self.state.variables.write(key, float(val))
                         ijk_counter[1] += 1
                     if add == "K":
                         key = ijk_counter[0] * 3 + 6
                         if 33 < key:
-                            raise OverFlowingArgumentNCError("I")
+                            raise OverFlowingArgumentNCError("K")
                         self.state.variables.write(key, float(val))
                         ijk_counter[2] += 1
+            # all args
+            else:
+                args_address_key = {("A", 1), ("B", 1), ("C", 3),
+                                    ("I", 4), ("J", 5), ("K", 6),
+                                    ("D", 7), ("E", 8), ("F", 9),
+                                    ("H", 11), ("M", 13), ("Q", 17),
+                                    ("R", 18), ("S", 19), ("T", 20),
+                                    ("U", 21), ("V", 22), ("W", 23),
+                                    ("X", 24), ("Y", 25), ("Z", 26)}
+                for add, key in args_address_key:
+                    if p := re.search(f".*{add}([^A-Z]+)", block):
+                        self.state.variables.write(key, float(p.group(1)))
+
+    def search_sequence(self, program: int, goto: int, row: int) -> int:
+        # self.prepare(block)使用の事
+        for i, block in enumerate(self.state.programs.read(program)[row:]):
+            if goto == Parser.n_from_block(Parser.prepare(block)):
+                row += i
+                break
+        else:
+            for i, block in enumerate(self.state.programs.read()[: row]):
+                if goto == Parser.n_from_block(Parser.prepare(block)):
+                    row = i
+                    break
+            else:
+                raise MissingSequenceNCError(goto)
+        return row
+
+    @staticmethod
+    def is_ijk_args(block: str) -> bool:
+        args_address = {"A", "B", "C", "I", "J", "K", "D", "E", "F", "H", "M",
+                        "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"}
+        used_address = {e for e in re.findall("([A-Z])[^A-Z]+", block)}
+        return not bool(used_address.intersection(args_address.difference({"A", "B", "C", "I", "J", "K"})))
 
 
 class Reader:
-    MAX_DEPTH = 100
-
-    def __init__(self, depth: int, parser: Parser):
-        if Reader.MAX_DEPTH < depth:
-            raise DepthOverNCError(Reader.MAX_DEPTH)
-        self.depth = 0
+    def __init__(self, parser: Parser):
         self.parser = parser
-        self.program = 0
-        self.index = 0
+        self.index = []
 
-        self.g66_block_memo = None
-        self.loop_num_memo = None
-
-    def cycle_start(self, program: int, index: int) -> Generator:
-        self.program = program
-        self.index = index
+    def cycle_start(self, program: int, row: int) -> Generator:
+        self.index.append({"program": program, "row": row})
         for block in self.next():
             yield block
 
     def next(self) -> Generator:
         while True:
-            block = self.parser.state.programs.read_block(self.program, self.index)
+            try:
+                block = self.parser.state.programs.read_block(self.index[-1]["program"], self.index[-1]["row"])
+            except IndexError:
+                raise EndOfProgramNCError
             block = Parser.prepare(block)
-            index = [self.index]
+            self.parser.parse(block)
 
             # macro
             if Parser.is_macro(block):
                 # GOTO
                 if pat_goto := re.search("GOTO([0-9]+)", block):
                     goto = int(pat_goto.group(1))
-                    for i, block in enumerate(self.parser.state.programs.read(self.program)[
-                                              self.index + 1:]):
-                        block = Parser.prepare(block)
-                        if goto == Parser.n_from_block(block):
-                            self.index += i
-                            break
-                    else:
-                        for i, block in enumerate(
-                                self.parser.state.programs.read()[
-                                :self.index]):
-                            block = Parser.prepare(block)
-                            if goto == Parser.n_from_block(block):
-                                self.index = i
-                                break
-                        else:
-                            raise MissingSequenceNCError(goto)
+                    self.index[-1]["row"] = self.parser.search_sequence(
+                        self.index[-1]["program"], goto, self.index[-1]["row"])
 
                 # IF
                 elif ...:
@@ -196,18 +194,17 @@ class Reader:
                     ...
 
                 # END
-                elif ...:
+                elif re.search("END([0-9])"):
                     ...
 
-                # =
-                elif ...:
-                    ...
+                else:
+                    raise MetaError
 
             # Gcode
             else:
                 # 空行
                 if len(block) == 0:
-                    pass
+                    self.index[-1]["row"] += 1
 
                 # M02, M30
                 elif re.search(".*(M2|M02|M30)([^0-9]|$)", block):
@@ -215,54 +212,73 @@ class Reader:
 
                 # M99
                 elif re.search(".*M99([^0-9]|$)", block):
-                    if self.depth == 0:
+                    if len(self.index) == 1:
                         yield block
-                        self.index = 0
+                        self.index[-1]["row"] = 0
                     else:
                         return block
 
                 # M98 G65 G66
                 elif pat := re.search(".*(M98|G65|G66)([^0-9]|$)", block):
-                    for block in self.call_subprogram(block):
-                        yield block
                     if pat.group(1) == "G66":
-                        self.g66_block_memo = block
+                        self.index[-1]["g66"] = block
+                    for b in self.call_subprogram(block, False):
+                        if re.search(".*(M2|M02|M30)([^0-9]|$)", b):
+                            return b
+                        else:
+                            yield b
+                    self.index[-1]["row"] += 1
 
                 else:
+                    # other
+                    # G67
+                    if "g66" in self.index[-1].keys() and re.search(".*G67([^0-9]|$)", block):
+                        del self.index[-1]["g66"]
+
                     yield block
 
-                # G66 modal
-                if self.parser.state.variables.read(4012) == 66:
-                    for block in self.call_subprogram(self.g66_block_memo):
-                        yield block
+                    # G66 modal
+                    if "g66" in self.index[-1].keys():
+                        for b in self.call_subprogram(block, True):
+                            yield b
+                    self.index[-1]["row"] += 1
 
 
 
 
 
 
-    def call_subprogram(self, block: str) -> Generator:
+
+    def call_subprogram(self, block: str, is_modal: bool) -> Generator:
+        start_row = 0
         # p=プログラム番号
-        try:
-            p = int(re.search(".*P([0-9]+)", block).group(1))
-        except AttributeError:
+        if p := re.search(".*P([0-9]+)", block):
+            p = int(p.group(1))
+        else:
             raise MissingArgumentNCError("P")
 
         # l=呼び出し回数
-        l = 1
-        if (pat_l := re.search(".*L([0-9]+)", block)):
-            l = int(pat_l.group(1))
+        if l := re.search(".*L([0-9]+)", block):
+            l = int(l.group(1))
+        else:
+            l = 1
 
         # 1回目
-        yield block
-        for block in Reader(self.depth + 1, self.parser).cycle_start(p, 0):
+        if is_modal:
+            self.parser.call_subprogram(block)
+        else:
+            yield block
+        self.index.append({"program": p, "row": start_row})
+        for block in self.next():
             yield block
 
         # 2回目以降
         for i in range(l - 1):
             self.parser.call_subprogram(block)
-            for block in Reader(self.depth + 1, self.parser).cycle_start(p, 0):
+            self.index[-1]["row"] = start_row
+            for block in self.next():
                 yield block
+        self.index.pop()
 
 
 class MacroInMDINCError(Exception):
@@ -283,7 +299,7 @@ class MissingArgumentNCError(Exception):
         self.arg = arg
 
     def __str__(self):
-        return f"アドレス{self.arg}が足りません．"
+        return f"アドレス{self.arg}が見つかりません．"
 
 
 class MissingSequenceNCError(Exception):
@@ -294,17 +310,17 @@ class MissingSequenceNCError(Exception):
         return f"シーケンス番号{self.arg}が見つかりません．"
 
 
-class DepthOverNCError(Exception):
-    def __init__(self, arg: int):
+class EndOfProgramNCError(Exception):
+    def __str__(self):
+        return "プログラム終端です．"
+
+
+class InvalidAddressNCError(Exception):
+    def __init__(self, arg):
         self.arg = arg
 
     def __str__(self):
-        return f"呼び出し回数が{self.arg}回を超えました．"
-
-
-
-
-
+        return f"アドレス{self.arg}は不正です．"
 
 
 class SyntaxChecker:

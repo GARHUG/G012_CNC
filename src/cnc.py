@@ -36,3 +36,8 @@ class State:
         self.coordinates = Coordinates()
         self.tool_settings = ToolSettings()
         self.variables = Variables()
+
+
+class MetaError(Exception):
+    def __str__(self):
+        return "問題が発生しました."

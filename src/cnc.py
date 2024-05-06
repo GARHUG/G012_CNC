@@ -38,6 +38,6 @@ class State:
         self.variables = Variables()
 
 
-class MetaError(Exception):
+class RunTimeNCError(Exception):
     def __str__(self):
         return "問題が発生しました."

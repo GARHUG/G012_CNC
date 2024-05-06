@@ -1,7 +1,7 @@
 import re
 from typing import Generator
 
-from cnc import State, RunTimeNCError
+from cnc import State, MetaError
 from programs import Programs, InvalidProgramNumberNCError
 from variables import Variables
 
@@ -198,7 +198,7 @@ class Reader:
                     ...
 
                 else:
-                    raise RunTimeNCError
+                    raise MetaError
 
             # Gcode
             else:

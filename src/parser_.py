@@ -108,19 +108,19 @@ class Parser:
                     if add == "I":
                         key = ijk_counter[0] * 3 + 4
                         if 33 < key:
-                            raise OverFlowingArgumentNCError("I")
+                            raise TooManyAddressNCError("I")
                         self.state.variables.write(key, float(val))
                         ijk_counter[0] += 1
                     if add == "J":
                         key = ijk_counter[0] * 3 + 5
                         if 33 < key:
-                            raise OverFlowingArgumentNCError("J")
+                            raise TooManyAddressNCError("J")
                         self.state.variables.write(key, float(val))
                         ijk_counter[1] += 1
                     if add == "K":
                         key = ijk_counter[0] * 3 + 6
                         if 33 < key:
-                            raise OverFlowingArgumentNCError("K")
+                            raise TooManyAddressNCError("K")
                         self.state.variables.write(key, float(val))
                         ijk_counter[2] += 1
             # all args
@@ -181,7 +181,7 @@ class Reader:
             except IndexError:
                 raise EndOfProgramNCError
             block = Parser.prepare(block)
-            self.parser.parse(block)
+            # self.parser.parse(block)
 
             # macro
             if Parser.is_macro(block):
@@ -261,7 +261,7 @@ class Reader:
         if p := re.search(".*P([0-9]+)", block):
             p = int(p.group(1))
         else:
-            raise MissingArgumentNCError("P")
+            raise MissingAddressNCError("P")
 
         # l=呼び出し回数
         if l := re.search(".*L([0-9]+)", block):
@@ -293,7 +293,7 @@ class MacroInMDINCError(Exception):
         return "MDI中にマクロは使用出来ません．"
 
 
-class OverFlowingArgumentNCError(Exception):
+class TooManyAddressNCError(Exception):
     def __init__(self, arg):
         self.arg = arg
 
@@ -301,7 +301,7 @@ class OverFlowingArgumentNCError(Exception):
         return f"アドレス{self.arg}が多すぎます．"
 
 
-class MissingArgumentNCError(Exception):
+class MissingAddressNCError(Exception):
     def __init__(self, arg):
         self.arg = arg
 

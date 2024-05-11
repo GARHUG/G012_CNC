@@ -2,7 +2,7 @@ from enum import Enum
 import re
 from typing import Generator
 
-from cnc import State, RunTimeNCError
+from cnc import State, NCError
 from programs import InvalidProgramNumberNCError
 
 
@@ -204,7 +204,7 @@ class Reader:
                     ...
 
                 else:
-                    raise RunTimeNCError
+                    raise NCError
 
             # Gcode
             else:

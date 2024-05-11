@@ -2,8 +2,49 @@ from enum import Enum
 import re
 from typing import Generator
 
-from cnc import State, RunTimeNCError
+from cnc import State, NCError
 from programs import InvalidProgramNumberNCError
+
+
+class Address(Enum):
+    A = "A"
+    B = "B"
+    C = "C"
+    D = "D"
+    E = "E"
+    F = "F"
+    G = "G"
+    H = "H"
+    I = "I"
+    J = "J"
+    K = "K"
+    L = "L"
+    M = "M"
+    N = "N"
+    O = "O"
+    P = "P"
+    Q = "Q"
+    R = "R"
+    S = "S"
+    T = "T"
+    U = "U"
+    V = "V"
+    W = "W"
+    X = "X"
+    Y = "Y"
+    Z = "Z"
+    IF = "IF"
+    GOTO = "GOTO"
+    THEN = "THEN"
+    WHILE = "WHILE"
+    DO = "DO"
+    END = "END"
+    SUB = "="
+
+class CodeType(Enum):
+    GCODE = None
+    MACRO = None
+    SUB = None
 
 
 class Parser:
@@ -43,25 +84,22 @@ class Parser:
 
     @staticmethod
     def remove_not_allow_str(block: str) -> str:
-        """事前にParse.prepare()使用の事"""
-        return re.sub("[^A-Z0-9.#=+\-*/[\]]", "", block)
-
-    class CodeType(Enum):
-        GCODE = None
-        MACRO = None
-        SUBSTITUTION = None
-
-    @classmethod
-    def which_type(cls, block: str) -> CodeType:
-        if cls.is_substitution(block):
-            return cls.CodeType.SUBSTITUTION
-        elif cls.is_macro(block):
-            return cls.CodeType.MACRO
-        else:
-            return cls.CodeType.GCODE
+        """事前にParse.remove_comments()使用の事"""
+        result = re.sub("[^A-Z0-9.#=+\-*/[\]]", "", block)
+        if len(result) != len(block):
+            raise NCParserError("無効な文字が含まれています．")
 
     @staticmethod
-    def is_substitution(block: str) -> bool:
+    def which_type(block: str) -> CodeType:
+        if Parser.is_sub(block):
+            return CodeType.SUB
+        elif Parser.is_macro(block):
+            return CodeType.MACRO
+        else:
+            return CodeType.GCODE
+
+    @staticmethod
+    def is_sub(block: str) -> bool:
         """事前にParse.prepare()使用の事"""
         return "=" in block and not "IF" in block
 
@@ -75,32 +113,104 @@ class Parser:
         else:
             return False
 
-    @classmethod
+    @staticmethod
+    def is_bool_formula(value: str) -> bool:
+        """事前にParse.prepare()使用の事"""
+        keywords = {"EQ", "NE", "GT", "LT", "GE", "LE"}
+        for keyword in keywords:
+            if keyword in value:
+                return True
+        else:
+            return False
+
+    @staticmethod
     def is_gcode(cls, block: str) -> bool:
         """事前にParse.prepare()使用の事"""
-        return not (cls.is_macro(block) or cls.is_substitution(block))
+        return not (Parser.is_macro(block) or Parser.is_sub(block))
 
-    @classmethod
-    def encode_substitution(cls, block: str) -> list:
-        """事前にParse.prepare()使用の事"""
+    def encode_sub(self, block: str) -> list:
+        val_pat = Parser.val_pat()
+        enc = re.findall(f"#({val_pat})=({val_pat})", block)
+        if len(enc) != 1:
+            raise NCParserError("無効な代入文です．")
+        return [("#", enc[0][0]), ("=", enc[0][3])]
+
+    def encode_substitution_(self, block: str) -> list:
+        """return: [('#', 値), ("=", 値)]"""
         eq = re.search("=", block)
         if eq is None:
-            raise RunTimeNCError
-
-        add = re.search("#(.*)", block[:eq.start()])
-        if add is None:
+            raise NCParserError("アドレス=が見つかりません")
+        ad = re.search("#(.*)", block[:eq.start()])
+        if ad is None:
             raise MissingAddressNCError("#")
-
         val = block[eq.end():]
-        val = cls.solve_val(val)
-        return [add.group(1), eq.group(), val]
+        val = self.solve(val)
+        return [("=", ad.group(1), val)]
 
-    @classmethod
-    def solve_val(cls, block: str) -> float:
+    def encode_goto(self, block: str) -> list:
+        """return: [("GOTO", 値)]"""
+        val_pat = Parser.val_pat()
+        enc = re.findall(f"GOTO({val_pat})", block)
+        if len(enc) != 1:
+            raise NCParserError("無効なGOTO文です．")
+        return [("GOTO", enc[0][0])]
+
+    def encode_if(self, block: str) -> list:
+        """return: [("IF", 式, マクロ命令)]"""
+        val_pat = Parser.val_pat()
+        logic_pat = Parser.logic_pat()
+        enc = re.findall(f"IF({logic_pat})((THEN#{val_pat}={val_pat})|GOTO{val_pat})", block)
+        if len(enc) != 1:
+            raise NCParserError("無効なIF文です．")
+        return [("IF", enc[0][0]), (enc[0][3])]
+
+    def encode_while(self, block: str) -> list:
+        """return: [("WHILE", 式), ("DO", 値)]"""
+        val_pat = Parser.val_pat()
+        logic_pat = Parser.logic_pat()
+        enc = re.findall(f"WHILE({logic_pat})DO({val_pat})", block)
+        if len(enc) != 1:
+            raise NCParserError("無効なWHILE文です．")
+        do = self.solve(enc[0][3])
+        return [("WHILE", enc[0][0]), ("DO", enc[0][3])]
+
+    def encode_end(self, block: str) -> list:
+        """return: [("END", 値)]"""
+        val_pat = Parser.val_pat()
+        enc = re.findall(f"END({val_pat})", block)
+        if len(enc) != 1:
+            raise NCParserError("無効なEND文です．")
+        return [("END", enc[0][0])]
+
+    def encode_gcode(self, block: str) -> [(Address, float)]:
+        """[(アドレス, 値)]"""
+        val_pat = Parser.val_pat()
+        enc = re.finditer(f"([A-Z])({val_pat})", block)
+        return [(ad, val) for ad, val, _ in enc]
+
+    def encode_check_len(self, block: str, enc: str):
+        block_enc = []
+        for adval in enc:
+            for i in adval:
+                block_enc.append(i)
+        block_enc = "".join(block_enc)
+        if block != block_enc:
+            raise NCParserError("アドレスが無効です．")
+
+    @staticmethod
+    def val_pat():
+        return "([-+*/[\].#0-9]|SQRT|ABS|SIN|COS|TAN|ATAN|ROUND|FIX|FUP|BIN|BCD)+"
+
+    @staticmethod
+    def logic_pat():
+        return f"({Parser.val_pat}|EQ|NE|GT|LT|GE|LE|AND|OR)+"
+
+    def solve_bool(self, block) -> bool:
         ...
 
-    @classmethod
-    def solve_bool(cls, block):
+
+    def solve(self, value: str) -> float:
+        """エンコードされた値を計算"""
 
 
 
@@ -122,21 +232,18 @@ class Reader:
                     self.index[-1]["program_num"],
                     self.index[-1]["row"])
             except IndexError:
-                raise EndOfProgramNCError
+                raise EndOfProgramNCReaderError
             block = Parser.prepare(block)
 
 
-class MacroInMDINCError(Exception):
+class NCParserError(NCError):
+    def __init__(self, msg):
+        self.msg = msg
     def __str__(self):
-        return "MDI中にマクロは使用出来ません．"
+        return self.msg
 
 
-class TooManyAddressNCError(Exception):
-    def __init__(self, arg):
-        self.arg = arg
 
-    def __str__(self):
-        return f"アドレス{self.arg}が多すぎます．"
 
 
 class MissingAddressNCError(Exception):
@@ -147,7 +254,7 @@ class MissingAddressNCError(Exception):
         return f"アドレス{self.arg}が見つかりません．"
 
 
-class MissingSequenceNCError(Exception):
+class MissingSequenceNCReaderError(Exception):
     def __init__(self, arg: int):
         self.arg = arg
 
@@ -155,7 +262,7 @@ class MissingSequenceNCError(Exception):
         return f"シーケンス番号{self.arg}が見つかりません．"
 
 
-class EndOfProgramNCError(Exception):
+class EndOfProgramNCReaderError(Exception):
     def __str__(self):
         return "プログラム終端です．"
 
@@ -166,6 +273,3 @@ class InvalidAddressNCError(Exception):
 
     def __str__(self):
         return f"アドレス{self.arg}は不正です．"
-
-
-

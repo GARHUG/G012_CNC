@@ -96,9 +96,9 @@ class Parser:
             raise NCParserError("無効な文字が含まれています．")
         return result
 
-    @staticmethod
-    def which_type(block: str) -> CodeType:
-        if Parser.is_sub(block):
+    @classmethod
+    def which_type(cls, block: str) -> CodeType:
+        if cls.is_sub(block):
             return CodeType.SUB
         elif Parser.is_macro(block):
             return CodeType.MACRO
@@ -140,10 +140,10 @@ class Parser:
         else:
             return False
 
-    @staticmethod
+    @classmethod
     def is_gcode(cls, block: str) -> bool:
         """事前にParse.prepare()使用の事"""
-        return not (Parser.is_macro(block) or Parser.is_sub(block))
+        return not (cls.is_macro(block) or cls.is_sub(block))
 
     @staticmethod
     def is_num(value: str, int_only: bool) -> bool:
@@ -156,57 +156,57 @@ class Parser:
                 return False
         return True
 
-    @staticmethod
-    def encode_sub(block: str) -> list:
+    @classmethod
+    def encode_sub(cls, block: str) -> list:
         """return: [("#", 値), ("=", 値)]"""
-        val_pat = Parser.get_val_pattern()
+        val_pat = cls.get_val_pat()
         enc = re.findall(f"#({val_pat})=({val_pat})", block)
         if len(enc) != 1:
             raise NCParserError("無効な代入文です．")
         return [("#", enc[0][0]), ("=", enc[0][3])]
 
-    @staticmethod
-    def encode_goto(block: str) -> list:
+    @classmethod
+    def encode_goto(cls, block: str) -> list:
         """return: [("GOTO", 値)]"""
-        val_pat = Parser.get_val_pattern()
+        val_pat = cls.get_val_pat()
         enc = re.findall(f"GOTO({val_pat})", block)
         if len(enc) != 1:
             raise NCParserError("無効なGOTO文です．")
         return [("GOTO", enc[0][0])]
 
-    @staticmethod
-    def encode_if(block: str) -> list:
+    @classmethod
+    def encode_if(cls, block: str) -> list:
         """return: [("IF", 式, マクロ命令)]"""
-        val_pat = Parser.get_val_pattern()
-        logic_pat = Parser.get_formula_pattern()
+        val_pat = cls.get_val_pat()
+        logic_pat = cls.get_formula_pat()
         enc = re.findall(f"IF({logic_pat})((THEN#{val_pat}={val_pat})|GOTO{val_pat})", block)
         if len(enc) != 1:
             raise NCParserError("無効なIF文です．")
         return [("IF", enc[0][0]), (enc[0][3])]
 
-    @staticmethod
-    def encode_while(block: str) -> list:
+    @classmethod
+    def encode_while(cls, block: str) -> list:
         """return: [("WHILE", 式), ("DO", 値)]"""
-        val_pat = Parser.get_val_pattern()
-        logic_pat = Parser.get_formula_pattern()
+        val_pat = cls.get_val_pat()
+        logic_pat = cls.get_formula_pat()
         enc = re.findall(f"WHILE({logic_pat})DO({val_pat})", block)
         if len(enc) != 1:
             raise NCParserError("無効なWHILE文です．")
         return [("WHILE", enc[0][0]), ("DO", enc[0][3])]
 
-    @staticmethod
-    def encode_end(block: str) -> list:
+    @classmethod
+    def encode_end(cls, block: str) -> list:
         """return: [("END", 値)]"""
-        val_pat = Parser.get_val_pattern()
+        val_pat = cls.get_val_pat()
         enc = re.findall(f"END({val_pat})", block)
         if len(enc) != 1:
             raise NCParserError("無効なEND文です．")
         return [("END", enc[0][0])]
 
-    @staticmethod
-    def encode_gcode(block: str) -> [(Address, float)]:
+    @classmethod
+    def encode_gcode(cls, block: str) -> [(Address, float)]:
         """[(アドレス, 値)]"""
-        val_pat = Parser.get_val_pattern()
+        val_pat = cls.get_val_pat()
         enc = re.finditer(f"([A-Z])({val_pat})", block)
         return [(ad, val) for ad, val, _ in enc]
 
@@ -221,62 +221,63 @@ class Parser:
             raise NCParserError("アドレスが無効です．")
 
     @staticmethod
-    def get_val_pattern():
+    def get_val_pat():
         return "([-+*/[\].#0-9]|SQRT|ABS|SIN|COS|TAN|ATAN|ROUND|FIX|FUP|BIN|BCD)+"
 
-    @staticmethod
-    def get_formula_pattern():
-        return f"({Parser.get_val_pattern}|EQ|NE|GT|LT|GE|LE|AND|OR)+"
+    @classmethod
+    def get_formula_pat(cls):
+        return f"({cls.get_val_pat}|EQ|NE|GT|LT|GE|LE|AND|OR)+"
 
-    def solve(self, value: str) -> float:
+    def solve_value(self, value: str) -> float:
         """エンコードされた値を計算"""
         # 四則演算で分割
-        result = Parser.split_asmd(value)
+        result = self.split_asmd(value)
         # 分割した要素の偶数番目を式から値に変換
+        # 奇数番目は[+-*/]、偶数番目は値
         for i, val in enumerate(result[::2]):
             i = i * 2
-            if Parser.is_num(val, False):
+            if self.is_num(val, False):
                 pass
             elif val[0] == "[" and val[-1] == "]":
-                result[i] = self.solve(val[1:-1])
+                result[i] = self.solve_value(val[1:-1])
             elif val[0] == "#":
-                v = self.solve(val[1:])
-                if not Parser.is_num(str(v), True):
+                v = self.solve_value(val[1:])
+                if not self.is_num(str(v), True):
                     raise NCParserError("マクロキーが整数ではありません．")
                 result[i] = self.state.variables.read(v)
             elif val[:4] == "SQRT":
-                v = self.solve(val[5:-1])
+                v = self.solve_value(val[5:-1])
                 result[i] = math.sqrt(v)
             elif val[:3] == "ABS":
-                v = self.solve(val[4:-1])
+                v = self.solve_value(val[4:-1])
                 result[i] = abs(v)
             elif val[:3] == "SIN":
-                v = self.solve(val[4:-1])
+                v = self.solve_value(val[4:-1])
                 result[i] = math.sin(v)
             elif val[:3] == "COS":
-                v = self.solve(val[4:-1])
+                v = self.solve_value(val[4:-1])
                 result[i] = math.cos(v)
             elif val[:3] == "TAN":
-                v = self.solve(val[4:-1])
+                v = self.solve_value(val[4:-1])
                 result[i] = math.tan(v)
             elif val[:4] == "ATAN":
-                v = self.solve(val[5:-1])
+                v = self.solve_value(val[5:-1])
                 result[i] = math.atan(v)
             elif val[:5] == "ROUND":
-                v = self.solve(val[6:-1])
+                v = self.solve_value(val[6:-1])
                 result[i] = round(v)
             elif val[:3] == "FIX":
-                v = self.solve(val[4:-1])
+                v = self.solve_value(val[4:-1])
                 result[i] = math.floor(v)
             elif val[:3] == "FUP":
-                v = self.solve(val[4:-1])
+                v = self.solve_value(val[4:-1])
                 result[i] = math.ceil(v)
             elif val[:3] == "BIN":
-                v = self.solve(val[4:-1])
+                v = self.solve_value(val[4:-1])
                 result[i] = Parser.bin(str(v))
             elif val[:3] == "BCD":
-                v = self.solve(val[4:-1])
-                result[i] = Parser.bcd(str(v))
+                v = self.solve_value(val[4:-1])
+                result[i] = self.bcd(str(v))
             else:
                 assert False
         # 四則演算
@@ -298,9 +299,8 @@ class Parser:
                 tmp = ""
             else:
                 tmp += s
-        else:
-            if bkt_cnt != 0:
-                raise NCParserError("カッコが一致しません．")
+        if bkt_cnt != 0:
+            raise NCParserError("カッコが一致しません．")
         result.append(tmp)
         if not result[0]:
             result[0] = "0"
@@ -332,7 +332,7 @@ class Parser:
             result += b
         return float(result)
 
-    def solve_formula(self, formula: str) -> Bool:
+    def solve_formula(self, formula: str) -> bool:
         formula = Parser.split_logic(formula[1:-1])
         for b in formula[::2]:
             if not isinstance(b, Bool):
@@ -364,9 +364,28 @@ class Parser:
             del result[0]
         return result
 
-    @staticmethod
-    def calc_bool(formula: list) -> Bool:
-        ...
+    def solve_compare(self, formula: list) -> bool:
+        if formula[0] != "[" or formula[-1] != "]":
+            raise NCParserError("式がカッコに囲まれていません．")
+        formula = re.search(f"({self.get_val_pat()})(EQ|NE|GT|LT|GE|LE)({self.get_val_pat()})")
+        if formula is None:
+            raise NCParserError("式を評価出来ません．")
+        val1 = self.solve_value(formula.group(1))
+        com = formula.group(2)
+        val2 = self.solve_value(formula.group(3))
+        if com == "EQ":
+            return val1 == val2
+        if com == "NE":
+            return val1 != val2
+        if com == "GT":
+            return val1 < val2
+        if com == "LT":
+            return val1 > val2
+        if com == "GE":
+            return val1 <= val2
+        if com == "LE":
+            return val1 >= val2
+
 
 class Reader:
     def __init__(self, parser: Parser):

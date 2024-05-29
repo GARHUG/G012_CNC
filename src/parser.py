@@ -399,7 +399,7 @@ class Parser:
             elif formula[ix] == "]":
                 bkt_cnt -= 1
             if bkt_cnt == 0:
-                result.append(tmp)423
+                result.append(tmp)
                 tmp = ""
                 if formula[ix] == "A" and formula[ix] == "N" and formula[ix] == "D":
                     result.append("AND")

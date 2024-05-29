@@ -131,11 +131,11 @@ class Parser:
             return False
 
     @staticmethod
-    def is_logic_formula(value: str) -> bool:
+    def is_logic_formula(formula: str) -> bool:
         """事前にParse.prepare()使用の事"""
         keywords = {"AND", "OR"}
         for keyword in keywords:
-            if keyword in value:
+            if keyword in formula:
                 return True
         else:
             return False
@@ -179,7 +179,7 @@ class Parser:
         """return: [("IF", 式, マクロ命令)]"""
         val_pat = cls.get_val_pat()
         logic_pat = cls.get_formula_pat()
-        enc = re.findall(f"IF({logic_pat})((THEN#{val_pat}={val_pat})|GOTO{val_pat})", block)
+        enc = re.findall(f"IF\[({logic_pat})]((THEN#{val_pat}={val_pat})|GOTO{val_pat})", block)
         if len(enc) != 1:
             raise NCParserError("無効なIF文です．")
         return [("IF", enc[0][0]), (enc[0][3])]
@@ -189,7 +189,7 @@ class Parser:
         """return: [("WHILE", 式), ("DO", 値)]"""
         val_pat = cls.get_val_pat()
         logic_pat = cls.get_formula_pat()
-        enc = re.findall(f"WHILE({logic_pat})DO({val_pat})", block)
+        enc = re.findall(f"WHILE\[({logic_pat})]DO({val_pat})", block)
         if len(enc) != 1:
             raise NCParserError("無効なWHILE文です．")
         return [("WHILE", enc[0][0]), ("DO", enc[0][3])]
@@ -387,44 +387,36 @@ class Parser:
         # 四則演算
         return eval("".join(map(str, result)))
 
-
-
-
     @staticmethod
-    def split_logic(formula: str):
-        fml = formula[1:-1]
-        bkt_cnt = 0
+    def split_logic(formula: str) -> list:
         result = []
+        bkt_cnt = 0
         tmp = ""
         ix = 0
-        while ix <= len(fml):
-            if fml[ix] == "[":
+        while ix < len(formula):
+            if formula[ix] == "[":
                 bkt_cnt += 1
-            elif fml[ix] == "]":
+            elif formula[ix] == "]":
                 bkt_cnt -= 1
             if bkt_cnt == 0:
                 result.append(tmp)
-                if fml[ix] == "A" and fml[ix+1] == "N" and fml[ix+2]:
+                tmp = ""
+                if formula[ix] == "A" and formula[ix] == "N" and formula[ix] == "D":
                     result.append("AND")
                     ix += 3
-                elif fml[ix] == "O" and fml[ix+1] == "R":
+                elif formula[ix] == "O" and formula[ix] == "R":
                     result.append("OR")
                     ix += 2
-                else:
-                    raise NCParserError("式に不正なアドレスが含まれています．")
-                tmp = ""
             else:
-                tmp += fml[ix]
-        result.append(tmp)
+                tmp += formula[ix]
+                ix += 1
         if bkt_cnt != 0:
             raise NCParserError("カッコが一致しません．")
         if result[0] == "AND" or result[0] == "OR" or result[-1] == "AND" or result[-1] == "OR":
             raise NCParserError("式が不正です．")
         return result
 
-    def solve_bool(self, formula: list) -> bool:
-        if formula[0] != "[" or formula[-1] != "]":
-            raise NCParserError("式がカッコに囲まれていません．")
+    def solve_compare(self, formula: list) -> bool:
         formula = re.search(f"({self.get_val_pat()})(EQ|NE|GT|LT|GE|LE)({self.get_val_pat()})")
         if formula is None:
             raise NCParserError("式を評価出来ません．")

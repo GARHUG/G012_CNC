@@ -121,11 +121,11 @@ class Parser:
             return False
 
     @staticmethod
-    def is_bool_formula(value: str) -> bool:
+    def is_bool_formula(formula: str) -> bool:
         """事前にParse.prepare()使用の事"""
         keywords = {"EQ", "NE", "GT", "LT", "GE", "LE"}
         for keyword in keywords:
-            if keyword in value:
+            if keyword in formula:
                 return True
         else:
             return False
@@ -179,20 +179,26 @@ class Parser:
         """return: [("IF", 式, マクロ命令)]"""
         val_pat = cls.get_val_pat()
         logic_pat = cls.get_formula_pat()
-        enc = re.findall(f"IF\[({logic_pat})]((THEN#{val_pat}={val_pat})|GOTO{val_pat})", block)
+        enc = re.findall(f"IF({logic_pat})((THEN#{val_pat}={val_pat})|GOTO{val_pat})", block)
         if len(enc) != 1:
             raise NCParserError("無効なIF文です．")
-        return [("IF", enc[0][0]), (enc[0][3])]
+        fml = enc[0][0]
+        if fml[0] != "[" or fml[-1] != "]":
+            raise NCParserError("式がカッコに囲まれていません．")
+        return [("IF", fml), (enc[0][3])]
 
     @classmethod
     def encode_while(cls, block: str) -> list:
         """return: [("WHILE", 式), ("DO", 値)]"""
         val_pat = cls.get_val_pat()
         logic_pat = cls.get_formula_pat()
-        enc = re.findall(f"WHILE\[({logic_pat})]DO({val_pat})", block)
+        enc = re.findall(f"WHILE({logic_pat})DO({val_pat})", block)
         if len(enc) != 1:
             raise NCParserError("無効なWHILE文です．")
-        return [("WHILE", enc[0][0]), ("DO", enc[0][3])]
+        fml = enc[0][0]
+        if fml[0] != "[" or fml[-1] != "]":
+            raise NCParserError("式がカッコに囲まれていません．")
+        return [("WHILE", fml), ("DO", enc[0][3])]
 
     @classmethod
     def encode_end(cls, block: str) -> list:
@@ -332,60 +338,45 @@ class Parser:
             result += b
         return float(result)
 
-    def solve_formula(self, formula: str):
-        """エンコードされた値を計算"""
-        # 四則演算で分割
-        result = self.split_logic(formula)
-        # 分割した要素の偶数番目を式からbool値に変換
-        # 奇数番目は[AND, OR]、偶数番目はbool値
-        for i, val in enumerate(result[::2]):
+    def solve_formula(self, formula: str) -> bool:
+        """エンコードされた式を評価"""
+        formula = self.split_logic(formula)
+        for i, f in enumerate(formula[::2]):
             i = i * 2
-            if val == True:
-                pass
-            elif val[0] == "[" and val[-1] == "]":
-                result[i] = self.solve_value(val[1:-1])
-            elif val[0] == "#":
-                v = self.solve_value(val[1:])
-                if not self.is_num(str(v), True):
-                    raise NCParserError("マクロキーが整数ではありません．")
-                result[i] = self.state.variables.read(v)
-            elif val[:4] == "SQRT":
-                v = self.solve_value(val[5:-1])
-                result[i] = math.sqrt(v)
-            elif val[:3] == "ABS":
-                v = self.solve_value(val[4:-1])
-                result[i] = abs(v)
-            elif val[:3] == "SIN":
-                v = self.solve_value(val[4:-1])
-                result[i] = math.sin(v)
-            elif val[:3] == "COS":
-                v = self.solve_value(val[4:-1])
-                result[i] = math.cos(v)
-            elif val[:3] == "TAN":
-                v = self.solve_value(val[4:-1])
-                result[i] = math.tan(v)
-            elif val[:4] == "ATAN":
-                v = self.solve_value(val[5:-1])
-                result[i] = math.atan(v)
-            elif val[:5] == "ROUND":
-                v = self.solve_value(val[6:-1])
-                result[i] = round(v)
-            elif val[:3] == "FIX":
-                v = self.solve_value(val[4:-1])
-                result[i] = math.floor(v)
-            elif val[:3] == "FUP":
-                v = self.solve_value(val[4:-1])
-                result[i] = math.ceil(v)
-            elif val[:3] == "BIN":
-                v = self.solve_value(val[4:-1])
-                result[i] = Parser.bin(str(v))
-            elif val[:3] == "BCD":
-                v = self.solve_value(val[4:-1])
-                result[i] = self.bcd(str(v))
+            if self.is_logic_formula(f):
+                formula[i] = self.solve_formula(f)
+            elif self.is_bool_formula(f):
+                formula[i] = self.solve_bool(f)
             else:
-                assert False
-        # 四則演算
-        return eval("".join(map(str, result)))
+                raise NCParserError("式が不正です．")
+        return self.solve_logic(formula)
+
+    @staticmethod
+    def solve_logic(formula: list) -> bool:
+        # ANDを処理
+        ix = 1
+        while ix < len(formula):
+            if formula[ix] == "AND":
+                if formula[ix-1] and formula[ix+1]:
+                    formula[ix-1:ix+2] = True
+                else:
+                    formula[ix-1:ix+2] = False
+                ix -= 1
+            else:
+                ix += 2
+        # ORを処理
+        ix = 1
+        while ix < len(formula):
+            if formula[ix] == "OR":
+                if formula[ix-1] or formula[ix+1]:
+                    formula[ix-1:ix+2] = True
+                else:
+                    formula[ix-1:ix+2] = False
+                ix -= 1
+            else:
+                ix += 2
+        assert len(formula) == 1
+        return formula[0]
 
     @staticmethod
     def split_logic(formula: str) -> list:
@@ -410,14 +401,16 @@ class Parser:
             else:
                 tmp += formula[ix]
                 ix += 1
+        result.append(tmp)
         if bkt_cnt != 0:
             raise NCParserError("カッコが一致しません．")
-        if result[0] == "AND" or result[0] == "OR" or result[-1] == "AND" or result[-1] == "OR":
+        if (result[0] == "AND" or result[0] == "OR"
+                or result[-1] == "AND" or result[-1] == "OR"):
             raise NCParserError("式が不正です．")
         return result
 
-    def solve_compare(self, formula: list) -> bool:
-        formula = re.search(f"({self.get_val_pat()})(EQ|NE|GT|LT|GE|LE)({self.get_val_pat()})")
+    def solve_bool(self, formula: str) -> bool:
+        formula = re.search(f"({self.get_val_pat()})(EQ|NE|GT|LT|GE|LE)({self.get_val_pat()})", formula)
         if formula is None:
             raise NCParserError("式を評価出来ません．")
         val1 = self.solve_value(formula.group(1))

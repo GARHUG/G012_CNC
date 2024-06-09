@@ -79,7 +79,6 @@ class Programs:
         return result
 
     def add_program(self, program: str):
-        program = tuple((block for block in program.splitlines() if block != "%"))
         num = int(program[0][1:5])
         if not self.is_valid_program_number(num):
             raise self.NCProgramsError("Ｏ番号が範囲外です．")
@@ -232,11 +231,11 @@ class Variables:
 
     class System:
         def __init__(self, modal: Modal):
-            self.modal = Modal
+            self.modal = modal
 
         @staticmethod
         def is_exist(key) -> bool:
-            if 4000 <= key and key >= 4020:
+            if 4000 <= key >= 4020:
                 return True
             elif key in {4102, 4107, 4109, 4111, 4113, 4114, 4115, 4119, 4120}
                 return True

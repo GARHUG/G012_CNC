@@ -6,42 +6,6 @@ from typing import Generator
 import state
 
 
-class Address(Enum):
-    A = "A"
-    B = "B"
-    C = "C"
-    D = "D"
-    E = "E"
-    F = "F"
-    G = "G"
-    H = "H"
-    I = "I"
-    J = "J"
-    K = "K"
-    L = "L"
-    M = "M"
-    N = "N"
-    O = "O"
-    P = "P"
-    Q = "Q"
-    R = "R"
-    S = "S"
-    T = "T"
-    U = "U"
-    V = "V"
-    W = "W"
-    X = "X"
-    Y = "Y"
-    Z = "Z"
-    IF = "IF"
-    GOTO = "GOTO"
-    THEN = "THEN"
-    WHILE = "WHILE"
-    DO = "DO"
-    END = "END"
-    SUB = "="
-
-
 class Parser:
     def __init__(self, modal: state.Modal, programs: state.Programs,
                  variables: state.Variables):
@@ -76,23 +40,19 @@ class Parser:
             block = self.get_block()
             block = self.prepare(block)
             if len(block) == 0:  # 空行
-                self.newline()
+                self.nl()
                 continue
-
+            # マクロ
             if self.is_sub(block):
                 self.sub(block)
-
             elif self.is_goto(block):
                 self.goto(block)
-
             elif self.is_if(block):
                 self.if_(block)
             elif self.is_while(block):
-                ...
-
+                self.while_(block)
             elif self.is_end(block):
-                ...
-
+                self.end(block)
             else:
                 ...
 
@@ -101,38 +61,34 @@ class Parser:
         key = self.to_int(self.solve_value(sb[0][1]))
         val = self.solve_value_or_none(sb[1][1])
         self.variables.write(key, val)
-        self.newline()
+        self.nl()
 
     def goto(self, block: str):
-        program = self.programs.read(self.index[-1]["p"])
-        target_n = self.to_int(self.solve_value(self.split_goto(block)[1]))
+        program = self.programs.read(self.p)
+        target_n = self.to_int(self.solve_value(self.split_goto(block)[0][1]))
         # 下を検索
-        for i, block in enumerate(program[self.index[-1]["r"] + 1:]):
-            try:
-                n = self.to_int(
-                    self.solve_value(self.search_address(block, "N")))
-            except NCParserError:
+        for i, block in enumerate(program[self.r + 1:]):
+            pat = re.search(f".*N({self.get_val_pat()})", block)
+            if pat is None:
                 continue
-            else:
-                if n == target_n:
-                    row = self.index[-1]["r"] + i + 1
-                    if self.is_in_while(self.index[-1]["p"], row):
-                        raise NCParserError("WHILE文中には飛べません．")
-                    self.index[-1]["r"] = row
-                    return
+            n = self.to_int(self.solve_value(pat.group(1)))
+            if n == target_n:
+                row = self.r + i + 1
+                if self.is_in_while(self.p, row):
+                    raise NCParserError("WHILE文中には飛べません．")
+                self.r = row
+                return
         # 上を検索
-        for i, block in enumerate(program[:self.index[-1]["r"]]):
-            try:
-                n = self.to_int(
-                    self.solve_value(self.search_address(block, "N")))
-            except NCParserError:
+        for i, block in enumerate(program[:self.r]):
+            pat = re.search(f".*N({self.get_val_pat()})", block)
+            if pat is None:
                 continue
-            else:
-                if n == target_n:
-                    if self.is_in_while(self.index[-1]["p"], i):
-                        raise NCParserError("WHILE文中には飛べません．")
-                    self.index[-1]["r"] = i
-                    return
+            n = self.to_int(self.solve_value(pat.group(1)))
+            if n == target_n:
+                if self.is_in_while(self.p, i):
+                    raise NCParserError("WHILE文中には飛べません．")
+                self.r = i
+                return
         # 見つからない
         raise NCParserError("シーケンス番号が見つかりません．")
 
@@ -143,9 +99,9 @@ class Parser:
                 self.goto(sb[1])
             else:
                 self.sub(sb[1][4:])
-                self.newline()
+                self.nl()
         else:
-            self.newline()
+            self.nl()
 
     def while_(self, block: str):
         if 3 <= len(self.do):
@@ -159,17 +115,40 @@ class Parser:
         # 式がTrue
         if self.solve_formula(sb[0][1]):
             self.do.append(do)
-            self.newline()
+            self.nl()
         # 式がFalse
         else:
-            for i, block in enumerate(self.programs.read(self.index[-1]["p"])[self.index[-1]["r"]:]):
+            while_depth = 0
+            for i, block in enumerate(self.programs.read(self.p)[self.r:]):
+                if self.is_while(block):
+                    while_depth += 1
+                elif self.is_end(block):
+                    while_depth -= 1
                 if self.is_end(block) and do == self.to_int(self.solve_value(self.split_end(block)[0][1])):
+                    if while_depth == 0:
+                        self.r += i
+                    else:
+                        raise NCParserError("DOとENDが一致しません．")
 
+    def end(self, block: str):
+        program = self.programs.read(self.p)
+        target_n = self.to_int(self.solve_value(self.split_end(block)[0][1]))
+        # 上を検索
+        for i, block in enumerate(program[:self.r]):
+            pat = re.search(f".*DO({self.get_val_pat()})", block)
+            if pat is None:
+                continue
+            n = self.to_int(self.solve_value(pat.group(1)))
+            if n == target_n:
+                if self.is_in_while(self.p, i):
+                    raise NCParserError("WHILE文中には飛べません．")
+                self.r = i
+                return
+        # 見つからない
+        raise NCParserError("DO番号が見つかりません．")
 
-
-
-    def newline(self):
-        self.index[-1]["r"] += 1
+    def nl(self):
+        self.r += 1
 
     @classmethod
     def prepare(cls, block: str) -> str:
@@ -177,15 +156,9 @@ class Parser:
         block = cls.remove_not_allow_str(block)
         return block
 
-    def search_address(self, block, address) -> str:
-        pat = re.search(f".*{address}({self.get_val_pat()})", block)
-        assert pat is not None
-        return pat.group(1)
-
     def get_block(self) -> str:
         try:
-            block = self.programs.read_block(self.index[-1]["p"],
-                                             self.index[-1]["r"])
+            block = self.programs.read_block(self.p, self.r)
         except IndexError:
             raise StopIteration
         else:
@@ -628,6 +601,29 @@ class Parser:
         else:
             raise NCParserError(f"整数化出来ません．: {num}")
 
+    def search_address(self, block, address) -> str:
+        pat = re.search(f".*{address}({self.get_val_pat()})", block)
+        assert pat is not None
+        return pat.group(1)
+
+    @property
+    def p(self) -> int:
+        return self.index[-1]["program_number"]
+
+    @p.setter
+    def p(self, val: int):
+        assert isinstance(val, int)
+        self.index[-1]["program_number"] = val
+
+    @property
+    def r(self):
+        return self.index[-1]["row"]
+
+    @r.setter
+    def r(self, val: int):
+        assert isinstance(val, int)
+        self.index[-1]["row"] = val
+
 
 class Reader:
     def __init__(self, parser: Parser, state: State):
@@ -659,6 +655,44 @@ class NCParserError(Exception):
 
     def __str__(self):
         return self.args
+
+
+class Address(Enum):
+    A = "A"
+    B = "B"
+    C = "C"
+    D = "D"
+    E = "E"
+    F = "F"
+    G = "G"
+    H = "H"
+    I = "I"
+    J = "J"
+    K = "K"
+    L = "L"
+    M = "M"
+    N = "N"
+    O = "O"
+    P = "P"
+    Q = "Q"
+    R = "R"
+    S = "S"
+    T = "T"
+    U = "U"
+    V = "V"
+    W = "W"
+    X = "X"
+    Y = "Y"
+    Z = "Z"
+    IF = "IF"
+    GOTO = "GOTO"
+    THEN = "THEN"
+    WHILE = "WHILE"
+    DO = "DO"
+    END = "END"
+    SUB = "="
+
+
 
 
 """

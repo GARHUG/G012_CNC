@@ -16,7 +16,6 @@ class Parser:
         # メモ
         self.index = []
         self.g29 = [0, 0, 0, 0, 0]
-        self.do = []
 
     def mdi(self, block: str):
         self.parse(block)
@@ -35,9 +34,10 @@ class Parser:
     def parse(self, block: str):
         ...
 
-    def next(self) -> Generator:
+    def update_index(self):
+        """indexを更新する"""
         while True:
-            block = self.get_block()
+            block = self.programs.read_block(self.p, self.r)
             block = self.prepare(block)
             if len(block) == 0:  # 空行
                 self.nl()
@@ -104,17 +104,12 @@ class Parser:
             self.nl()
 
     def while_(self, block: str):
-        if 3 <= len(self.do):
-            raise NCParserError("WHILE文の層が深すぎます．")
         sb = self.split_while(block)
         do = self.to_int(self.solve_value(sb[1][1]))
         if do not in {1, 2, 3}:
             raise NCParserError("DO番号が不正です．")
-        elif do in self.do:
-            raise NCParserError("DO番号が重複しています．")
         # 式がTrue
         if self.solve_formula(sb[0][1]):
-            self.do.append(do)
             self.nl()
         # 式がFalse
         else:
@@ -156,14 +151,6 @@ class Parser:
         block = cls.remove_not_allow_str(block)
         return block
 
-    def get_block(self) -> str:
-        try:
-            block = self.programs.read_block(self.p, self.r)
-        except IndexError:
-            raise StopIteration
-        else:
-            return block
-
     @staticmethod
     def remove_comments(block: str) -> str:
         is_in_comments = False
@@ -186,6 +173,52 @@ class Parser:
         if len(result) != len(block):
             raise NCParserError(f"無効な文字が含まれています．: {block}")
         return result
+
+    @staticmethod
+    def get_group(g: float) -> int:
+        if g in {4, 5, 5.1, 8, 9, 10, 11, 27, 28, 29, 30, 31, 37, 39,
+                 45, 46, 47, 48, 52, 53, 60, 65, 92, 107}:
+            return 0
+        elif g in {0, 1, 2, 3, 33, 75, 77, 78, 79}:
+            return 1
+        elif g in {17, 18, 19}:
+            return 2
+        elif g in {90, 91}:
+            return 3
+        elif g in {22, 23}:
+            return 4
+        elif g in {94, 95}:
+            return 5
+        elif g in {20, 21}:
+            return 6
+        elif g in {40, 41, 42}:
+            return 7
+        elif g in {43, 44, 49}:
+            return 8
+        elif g in {73, 74, 76, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89}:
+            return 9
+        elif g in {98, 99}:
+            return 10
+        elif g in {50, 51}:
+            return 11
+        elif g in {66, 67}:
+            return 12
+        elif g in {96, 97}:
+            return 13
+        elif g in {54, 54.1, 55, 56, 57, 58, 59}:
+            return 14
+        elif g in {61, 62, 63, 64}:
+            return 15
+        elif g in {68, 69}:
+            return 16
+        elif g in {15, 16}:
+            return 17
+        elif g in {151, 152}:
+            return 19
+        elif g in {160, 161}:
+            return 20
+        else:
+            raise NCParserError("このGコードはサポートしていません．")
 
     @staticmethod
     def is_macro(block: str) -> bool:
@@ -601,11 +634,6 @@ class Parser:
         else:
             raise NCParserError(f"整数化出来ません．: {num}")
 
-    def search_address(self, block, address) -> str:
-        pat = re.search(f".*{address}({self.get_val_pat()})", block)
-        assert pat is not None
-        return pat.group(1)
-
     @property
     def p(self) -> int:
         return self.index[-1]["program_number"]
@@ -655,6 +683,34 @@ class NCParserError(Exception):
 
     def __str__(self):
         return self.args
+
+
+class GcodeList:
+    GROUP0 = {4, 4.1, 5, 5.1, 5.4, 7.1, 8, 9, 10, 10.6, 11, 24, 27, 28, 28.2,
+              29, 30, 30.2, 31, 32, 39, 52, 53, 53.2, 60, 63, 65, 72.1, 72.2,
+              75, 76, 77, 91.1, 92, 92.1, 107}
+    GROUP1 = {0, 1, 2, 3}
+    GROUP2 = {17, 18, 19}
+    GROUP3 = {90, 91}
+    GROUP4 = {22, 23}
+    GROUP5 = {}
+    GROUP6 = {20, 21, 70, 71}
+    GROUP7 = {40, 41, 42}
+    GROUP8 = {}
+    GROUP9 = {}
+    GROUP10 = {}
+    GROUP11 = {50, 51}
+    GROUP12 = {66, 66.1, 67}
+    GROUP13 = {}
+    GROUP14 = {54, 54.1, 55, 56, 57, 58, 59}
+    GROUP15 = {61, 62, 64}
+    GROUP16 = {68, 69, 84, 85}
+    GROUP17 = {15, 16}
+    GROUP18 = {40.1, 41.1, 42.1, 150, 151, 152}
+    GROUP19 = {}
+    GROUP20 = {}
+    GROUP38 = {13, 14}
+    GROUP42 = {13.2, 14.2}
 
 
 class Address(Enum):

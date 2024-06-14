@@ -23,9 +23,11 @@ class Modal:
         self.gr15 = 64
         self.gr16 = 69
         self.gr17 = 15
-        self.gr18 = 40.1
         self.gr19 = -1  # 初期値要確認
         self.gr20 = -1  # 初期値要確認
+
+        self.g10 = False
+        self.g52 = [0, 0, 0, 0, 0]
 
         self.b = 0
         self.d = 0
@@ -36,7 +38,7 @@ class Modal:
         self.p = 0
         self.s = 0
         self.t = 1
-        self.ccl = 5
+        self.cc_level = 5
 
 class Programs:
     def __init__(self):

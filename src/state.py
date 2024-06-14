@@ -31,11 +31,12 @@ class Modal:
         self.d = 0
         self.f = 0
         self.h = 0
-        self.m = -1  # 初期状態要確認
+        self.m = [-1, -1, -1]  # 初期状態要確認
         self.n = 0
         self.p = 0
         self.s = 0
         self.t = 1
+        self.ccl = 5
 
 class Programs:
     def __init__(self):

@@ -23,7 +23,7 @@ class Parser:
     def cycle_start(self, program_num: int, row: int) -> Generator:
         if not self.programs.is_exist(program_num):
             raise NCParserError("プログラムが存在しません．")
-        if self.is_in_while(program_num, row):
+        if self.get_while_range(program_num, row) != (-1, -1):
             raise NCParserError("WHILE文中からは開始出来ません．")
         self.index.clear()
         self.index.append({"p": program_num, "r": row})
@@ -74,10 +74,11 @@ class Parser:
             n = self.to_int(self.solve_value(pat.group(1)))
             if n == target_n:
                 row = self.r + i + 1
-                if self.is_in_while(self.p, row):
+                if self.can_jump(self.p, self.r, row):
+                    self.r = row
+                    return
+                else:
                     raise NCParserError("WHILE文中には飛べません．")
-                self.r = row
-                return
         # 上を検索
         for i, block in enumerate(program[:self.r]):
             pat = re.search(f".*N({self.get_val_pat()})", block)
@@ -85,10 +86,11 @@ class Parser:
                 continue
             n = self.to_int(self.solve_value(pat.group(1)))
             if n == target_n:
-                if self.is_in_while(self.p, i):
+                if self.can_jump(self.p, self.r, i):
+                    self.r = i
+                    return
+                else:
                     raise NCParserError("WHILE文中には飛べません．")
-                self.r = i
-                return
         # 見つからない
         raise NCParserError("シーケンス番号が見つかりません．")
 
@@ -113,32 +115,27 @@ class Parser:
             self.nl()
         # 式がFalse
         else:
-            while_depth = 0
             for i, block in enumerate(self.programs.read(self.p)[self.r:]):
-                if self.is_while_block(block):
-                    while_depth += 1
-                elif self.is_end_block(block):
-                    while_depth -= 1
                 if self.is_end_block(block) and do == self.to_int(self.solve_value(self.split_end(block)[0][1])):
-                    if while_depth == 0:
-                        self.r += i
+                    r = self.r + i
+                    if self.can_jump(self.p, self.r, r):
+                        self.r = r
                     else:
-                        raise NCParserError("DOとENDが一致しません．")
+                        raise NCParserError("WHILE文中には飛べません．")
 
     def end(self, block: str):
         program = self.programs.read(self.p)
-        target_n = self.to_int(self.solve_value(self.split_end(block)[0][1]))
-        # 上を検索
-        for i, block in enumerate(program[:self.r]):
-            pat = re.search(f".*DO({self.get_val_pat()})", block)
-            if pat is None:
-                continue
-            n = self.to_int(self.solve_value(pat.group(1)))
-            if n == target_n:
-                if self.is_in_while(self.p, i):
-                    raise NCParserError("WHILE文中には飛べません．")
-                self.r = i
-                return
+        target_do = self.to_int(self.solve_value(self.split_end(block)[0][1]))
+        # 上を下から検索
+        for i, block in enumerate(program[self.r::-1]):
+            if self.is_do_block(block):
+                do = self.to_int(self.solve_value(self.split_do(block)[0][1]))
+                if target_do == do:
+                    if self.can_jump(self.p, self.r, self.r - i):
+                        self.r -= i
+                        return
+                    else:
+                        raise NCParserError("WHILE文中には飛べません．")
         # 見つからない
         raise NCParserError("DO番号が見つかりません．")
 
@@ -224,63 +221,49 @@ class Parser:
         """
         一番内側のWHILE文とEND文の行番号を返す．
         start, endの初期値は-1
+        :return start, end
         """
-        program = self.variables.read(program)
-        l = len(program)
-        start = [-1]
-        end = [-1]
-        for i, block in enumerate(program[:row]):
-            if self.is_while_block(block):
-                start.append(i)
-            elif self.is_end_block(block):
-                start.pop()
-        for i, block in enumerate(program[:row:-1]):
-            if self.is_end_block(block):
-                end.append(l - i)
-            elif self.is_while_block(block):
-                end.pop()
-        return start[-1], end[-1]
-
-    def get_corresponds_end(self, program: int, row):
-        """WHILEブロックに対応するENDブロックを探す"""
         program = self.programs.read(program)
-        assert self.is_while_block(program[row])
-        do = self.to_int(self.solve_value(self.split_while(program[row])[1][1]))
-        for i, block in enumerate(program[row:]):
-            ...
+        for i, block1 in enumerate(program[row-1::-1]):
+            i += 1
+            if not self.is_while_block(block1):
+                continue
+            do = self.to_int(self.solve_value(self.split_while(block1)[1][1]))
+            for j, block2 in enumerate(program[row-i:]):
+                if not self.is_end_block(block2):
+                    continue
+                if do != self.to_int(self.solve_value(self.split_end(block2)[0][1])):
+                    continue
+                if i < j:
+                    return row - i, row - i + j
+                raise NCParserError(f"END文が見つかりません．: {program[row-i]}")
+        else:
+            return -1, -1
 
     @staticmethod
     def is_sub_block(block: str) -> bool:
         """事前にParse.prepare()使用の事"""
-        return "=" in block and not "IF" in block
+        return "=" in block and "IF" not in block
 
     @staticmethod
     def is_goto_block(block: str) -> bool:
-        if "GOTO" in block and "IF" not in block:
-            return True
-        else:
-            return False
+        return "GOTO" in block and "IF" not in block
 
     @staticmethod
     def is_if_block(block: str) -> bool:
-        if ("GOTO" in block or "THEN" in block) and "IF" in block:
-            return True
-        else:
-            return False
+        return ("GOTO" in block or "THEN" in block) and "IF" in block
 
     @staticmethod
     def is_while_block(block: str) -> bool:
-        if "WHILE" in block and "DO" in block:
-            return True
-        else:
-            return False
+        return "WHILE" in block and "DO" in block
+
+    @staticmethod
+    def is_do_block(block: str) -> bool:
+        return "DO" in block
 
     @staticmethod
     def is_end_block(block: str):
-        if "END" in block:
-            return True
-        else:
-            return False
+        return "END" in block
 
     @staticmethod
     def is_bool_formula(formula: str) -> bool:
@@ -305,7 +288,7 @@ class Parser:
     @staticmethod
     def is_num(value: str) -> bool:
         try:
-            f = float(value)
+            float(value)
         except ValueError:
             return False
         else:
@@ -322,25 +305,26 @@ class Parser:
             if self.is_while_block(block):
                 depth += 1
 
-    def is_jump_ok(self, program: int, row1: int, row2):
+    @classmethod
+    def is_mixed_gcode_and_macro(cls, block: str) -> bool:
+        is_macro = False
+        is_macro = cls.is_sub_block(block) or is_macro
+        is_macro = cls.is_goto_block(block) or is_macro
+        is_macro = cls.is_if_block(block) or is_macro
+        is_macro = cls.is_while_block(block) or is_macro
+        is_macro = cls.is_do_block(block) or is_macro
+        is_macro = cls.is_end_block(block) or is_macro
+        if not is_macro:
+            return False
+
+
+
+
+    def can_jump(self, program: int, row1: int, row2):
+        """プログラム番号{program}の行{row1}から行{row2}にGOTO,ENDで飛べるか？"""
         s1, e1 = self.get_while_range(program, row1)
         s2, e2 = self.get_while_range(program, row2)
         return s1 >= s2 and e1 <= e2
-
-    @classmethod
-    def split(cls, block: str):
-        if cls.is_sub_block(block):
-            return cls.split_sub(block)
-        elif cls.is_goto_block(block):
-            return cls.split_goto(block)
-        elif cls.is_if_block(block):
-            return cls.split_if(block)
-        elif cls.is_while_block(block):
-            return cls.split_while(block)
-        elif cls.is_end_block(block):
-            return cls.split_end(block)
-        else:
-            return cls.split_gcode(block)
 
     @classmethod
     def split_sub(cls, block: str) -> list:
@@ -387,6 +371,15 @@ class Parser:
         if fml[0] != "[" or fml[-1] != "]":
             raise NCParserError(f"式がカッコに囲まれていません．: {block}")
         return cls.split_len_check(block, [("WHILE", fml), ("DO", enc[0][3])])
+
+    @classmethod
+    def split_do(cls, block: str) -> list:
+        """return: [("DO", 値)]"""
+        val_pat = cls.get_val_pat()
+        enc = re.findall(f"DO({val_pat})", block)
+        if len(enc) != 1:
+            raise NCParserError(f"無効なDO文です．: {block}")
+        return cls.split_len_check(block, [("DO", enc[0][0])])
 
     @classmethod
     def split_end(cls, block: str) -> list:
@@ -649,6 +642,8 @@ class Parser:
 
     @staticmethod
     def to_int(num: str or float) -> int:
+        if num is None:
+            raise NCParserError("数値が#0です．")
         i = int(num)
         if i == float(num):
             return i

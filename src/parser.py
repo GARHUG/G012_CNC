@@ -318,8 +318,6 @@ class Parser:
             return False
 
 
-
-
     def can_jump(self, program: int, row1: int, row2):
         """プログラム番号{program}の行{row1}から行{row2}にGOTO,ENDで飛べるか？"""
         s1, e1 = self.get_while_range(program, row1)
@@ -329,8 +327,7 @@ class Parser:
     @classmethod
     def split_sub(cls, block: str) -> list:
         """return: [("#", 値), ("=", 値)]"""
-        val_pat = cls.get_val_pat()
-        enc = re.findall(f"#({val_pat})=({val_pat})", block)
+        enc = re.findall(cls.get_sub_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効な代入文です．: {block}")
         return cls.split_len_check(block, [("#", enc[0][0]), ("=", enc[0][3])])
@@ -338,8 +335,7 @@ class Parser:
     @classmethod
     def split_goto(cls, block: str) -> list:
         """return: [("GOTO", 値)]"""
-        val_pat = cls.get_val_pat()
-        enc = re.findall(f"GOTO({val_pat})", block)
+        enc = re.findall(cls.get_goto_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効なGOTO文です．: {block}")
         return cls.split_len_check(block, [("GOTO", enc[0][0])])
@@ -347,11 +343,7 @@ class Parser:
     @classmethod
     def split_if(cls, block: str) -> list:
         """return: [("IF", 式), (マクロ命令)]"""
-        val_pat = cls.get_val_pat()
-        logic_pat = cls.get_formula_pat()
-        enc = re.findall(
-            f"IF({logic_pat})((THEN#{val_pat}={val_pat})|GOTO{val_pat})",
-            block)
+        enc = re.findall(cls.get_if_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効なIF文です．: {block}")
         fml = enc[0][0]
@@ -417,7 +409,34 @@ class Parser:
     def get_formula_pat(cls):
         return f"({cls.get_val_pat}|EQ|NE|GT|LT|GE|LE|AND|OR)+"
 
-    def solve_value(self, value: str) -> float:
+    @classmethod
+    def get_sub_pat(cls) -> str:
+        return f"#({cls.get_val_pat()})=({cls.get_val_pat()})"
+
+    @classmethod
+    def get_goto_pat(cls) -> str:
+        return f"GOTO({cls.get_val_pat})"
+
+    @classmethod
+    def get_if_pat(cls) -> str:
+        return f"IF({cls.get_formula_pat})((THEN#{cls.get_val_pat}={cls.get_val_pat})|GOTO{cls.get_val_pat})"
+
+    @classmethod
+    def get_while_pat(cls) -> str:
+        ...
+
+
+    @classmethod
+    def get_do_pat(cls) -> str:
+        ...
+
+
+    @classmethod
+    def get_end_pat(cls) -> str:
+        ...
+
+
+def solve_value(self, value: str) -> float:
         """エンコードされた値を計算"""
         # 四則演算で分割
         result = self.split_asmd(value)

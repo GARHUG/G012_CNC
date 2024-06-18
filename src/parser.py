@@ -1,3 +1,5 @@
+"""2024.06.18"""
+
 from enum import Enum
 import math
 import re
@@ -31,30 +33,39 @@ class Parser:
             self.parse(block)
             yield
 
-    def parse(self, block: str):
-        ...
-
-    def update_index(self):
+    def parse(self):
         """indexを更新する"""
-        while True:
-            block = self.programs.read_block(self.p, self.r)
-            block = self.prepare(block)
-            if len(block) == 0:  # 空行
-                self.nl()
-                continue
-            # マクロ
-            if self.is_sub_block(block):
-                self.sub(block)
-            elif self.is_goto_block(block):
-                self.goto(block)
-            elif self.is_if_block(block):
-                self.if_(block)
-            elif self.is_while_block(block):
-                self.while_(block)
-            elif self.is_end_block(block):
-                self.end(block)
-            else:
-                ...
+        block = self.programs.read_block(self.p, self.r)
+        block = self.prepare(block)
+        self.check_mixed_gcode_and_macro(block)
+        while not block:  # 空行
+            self.nl()
+        # マクロ
+        if self.is_sub_block(block):
+            self.sub(block)
+        elif self.is_goto_block(block):
+            self.goto(block)
+        elif self.is_if_block(block):
+            self.if_(block)
+        elif self.is_while_block(block):
+            self.while_(block)
+        elif self.is_end_block(block):
+            self.end(block)
+        # Gコード
+        else:
+            ...
+
+    def parse_gcode(self, block):
+        sb = self.split_gcode(block)
+        for a, v in sb:
+            v = self.solve_value_or_none(v)
+            if a == "G":
+                gr = self.get_group(v)
+                if gr == 1:
+                    self.modal.gr1 = v
+
+
+
 
     def sub(self, block: str):
         sb = self.split_sub(block)
@@ -68,6 +79,7 @@ class Parser:
         target_n = self.to_int(self.solve_value(self.split_goto(block)[0][1]))
         # 下を検索
         for i, block in enumerate(program[self.r + 1:]):
+            block = self.prepare(block)
             pat = re.search(f".*N({self.get_val_pat()})", block)
             if pat is None:
                 continue
@@ -81,6 +93,7 @@ class Parser:
                     raise NCParserError("WHILE文中には飛べません．")
         # 上を検索
         for i, block in enumerate(program[:self.r]):
+            block = self.prepare(block)
             pat = re.search(f".*N({self.get_val_pat()})", block)
             if pat is None:
                 continue
@@ -116,6 +129,7 @@ class Parser:
         # 式がFalse
         else:
             for i, block in enumerate(self.programs.read(self.p)[self.r:]):
+                block = self.prepare(block)
                 if self.is_end_block(block) and do == self.to_int(self.solve_value(self.split_end(block)[0][1])):
                     r = self.r + i
                     if self.can_jump(self.p, self.r, r):
@@ -128,6 +142,7 @@ class Parser:
         target_do = self.to_int(self.solve_value(self.split_end(block)[0][1]))
         # 上を下から検索
         for i, block in enumerate(program[self.r::-1]):
+            block = self.prepare(block)
             if self.is_do_block(block):
                 do = self.to_int(self.solve_value(self.split_do(block)[0][1]))
                 if target_do == do:
@@ -215,7 +230,7 @@ class Parser:
         elif g in {160, 161}:
             return 20
         else:
-            raise NCParserError("このGコードはサポートしていません．")
+            raise NCParserError(f"このGコードはサポートしていません．: {g}")
 
     def get_while_range(self, program: int, row: int) -> tuple:
         """
@@ -226,10 +241,12 @@ class Parser:
         program = self.programs.read(program)
         for i, block1 in enumerate(program[row-1::-1]):
             i += 1
+            block1 = self.prepare(block1)
             if not self.is_while_block(block1):
                 continue
             do = self.to_int(self.solve_value(self.split_while(block1)[1][1]))
             for j, block2 in enumerate(program[row-i:]):
+                block2 = self.prepare(block2)
                 if not self.is_end_block(block2):
                     continue
                 if do != self.to_int(self.solve_value(self.split_end(block2)[0][1])):
@@ -298,6 +315,7 @@ class Parser:
         """WHILE文,END文はFalse.GOTO文で飛べるか？で判断．"""
         depth = 0
         for i, block in enumerate(self.programs.read(program)):
+            block = self.prepare(block)
             if self.is_end_block(block):
                 depth -= 1
             if row == i:
@@ -306,17 +324,32 @@ class Parser:
                 depth += 1
 
     @classmethod
-    def is_mixed_gcode_and_macro(cls, block: str) -> bool:
+    def check_mixed_gcode_and_macro(cls, block: str):
         is_macro = False
-        is_macro = cls.is_sub_block(block) or is_macro
-        is_macro = cls.is_goto_block(block) or is_macro
-        is_macro = cls.is_if_block(block) or is_macro
-        is_macro = cls.is_while_block(block) or is_macro
-        is_macro = cls.is_do_block(block) or is_macro
-        is_macro = cls.is_end_block(block) or is_macro
+        if cls.is_sub_block(block):
+            is_macro = True
+            block = re.sub(cls.get_sub_pat(), "", block)
+        if cls.is_goto_block(block):
+            is_macro = True
+            block = re.sub(cls.get_goto_pat(), "", block)
+        if cls.is_if_block(block):
+            is_macro = True
+            block = re.sub(cls.get_if_pat(), "", block)
+        if cls.is_while_block(block):
+            is_macro = True
+            block = re.sub(cls.get_while_pat(), "", block)
+        if cls.is_do_block(block):
+            is_macro = True
+            block = re.sub(cls.get_do_pat(), "", block)
+        if cls.is_end_block(block):
+            is_macro = True
+            block = re.sub(cls.get_end_pat(), "", block)
         if not is_macro:
-            return False
-
+            return
+        block = re.sub(f"N{cls.get_val_pat()}", "", block)
+        block = re.sub(f"O{cls.get_val_pat()}", "", block)
+        if block:
+            raise NCParserError("Gコードとマクロが混在しています．")
 
     def can_jump(self, program: int, row1: int, row2):
         """プログラム番号{program}の行{row1}から行{row2}にGOTO,ENDで飛べるか？"""
@@ -354,9 +387,7 @@ class Parser:
     @classmethod
     def split_while(cls, block: str) -> list:
         """return: [("WHILE", 式), ("DO", 値)]"""
-        val_pat = cls.get_val_pat()
-        logic_pat = cls.get_formula_pat()
-        enc = re.findall(f"WHILE({logic_pat})DO({val_pat})", block)
+        enc = re.findall(cls.get_while_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効なWHILE文です．: {block}")
         fml = enc[0][0]
@@ -367,8 +398,7 @@ class Parser:
     @classmethod
     def split_do(cls, block: str) -> list:
         """return: [("DO", 値)]"""
-        val_pat = cls.get_val_pat()
-        enc = re.findall(f"DO({val_pat})", block)
+        enc = re.findall(cls.get_do_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効なDO文です．: {block}")
         return cls.split_len_check(block, [("DO", enc[0][0])])
@@ -376,8 +406,7 @@ class Parser:
     @classmethod
     def split_end(cls, block: str) -> list:
         """return: [("END", 値)]"""
-        val_pat = cls.get_val_pat()
-        enc = re.findall(f"END({val_pat})", block)
+        enc = re.findall(cls.get_end_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効なEND文です．: {block}")
         return cls.split_len_check(block, [("END", enc[0][0])])
@@ -411,32 +440,38 @@ class Parser:
 
     @classmethod
     def get_sub_pat(cls) -> str:
-        return f"#({cls.get_val_pat()})=({cls.get_val_pat()})"
+        vp = cls.get_val_pat()
+        return f"#({vp})=({vp})"
 
     @classmethod
     def get_goto_pat(cls) -> str:
-        return f"GOTO({cls.get_val_pat})"
+        vp = cls.get_val_pat()
+        return f"GOTO({vp})"
 
     @classmethod
     def get_if_pat(cls) -> str:
-        return f"IF({cls.get_formula_pat})((THEN#{cls.get_val_pat}={cls.get_val_pat})|GOTO{cls.get_val_pat})"
+        vp = cls.get_val_pat()
+        fp = cls.get_formula_pat()
+        return f"IF({fp})((THEN#{vp}={vp})|GOTO{vp})"
 
     @classmethod
     def get_while_pat(cls) -> str:
-        ...
+        vp = cls.get_val_pat()
+        fp = cls.get_formula_pat()
+        return f"WHILE({fp})DO({vp})"
 
 
     @classmethod
     def get_do_pat(cls) -> str:
-        ...
-
+        vp = cls.get_val_pat()
+        return f"DO({vp})"
 
     @classmethod
     def get_end_pat(cls) -> str:
-        ...
+        vp = cls.get_val_pat()
+        return f"END({vp})"
 
-
-def solve_value(self, value: str) -> float:
+    def solve_value(self, value: str) -> float:
         """エンコードされた値を計算"""
         # 四則演算で分割
         result = self.split_asmd(value)

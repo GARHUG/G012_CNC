@@ -5,26 +5,26 @@ class Positions:
 
 class Modal:
     def __init__(self):
-        self.main_program = 0
-        self.gr1 = 0
-        self.gr2 = 17
-        self.gr3 = 91
-        self.gr4 = 22
-        self.gr5 = 94
-        self.gr6 = 21
-        self.gr7 = 40
-        self.gr8 = 49
-        self.gr9 = 80
-        self.gr10 = 98
-        self.gr11 = 50
-        self.gr12 = 67
-        self.gr13 = 97
-        self.gr14 = 54
-        self.gr15 = 64
-        self.gr16 = 69
-        self.gr17 = 15
-        self.gr19 = -1  # 初期値要確認
-        self.gr20 = -1  # 初期値要確認
+        self.main_program_ = 0
+        self.gr1_ = 0
+        self.gr2_ = 17
+        self.gr3_ = 91
+        self.gr4_ = 22
+        self.gr5_ = 94
+        self.gr6_ = 21
+        self.gr7_ = 40
+        self.gr8_ = 49
+        self.gr9_ = 80
+        self.gr10_ = 98
+        self.gr11_ = 50
+        self.gr12_ = 67
+        self.gr13_ = 97
+        self.gr14_ = 54
+        self.gr15_ = 64
+        self.gr16_ = 69
+        self.gr17_ = 15
+        self.gr19_ = 151  # 初期値要確認
+        self.gr20_ = 160  # 初期値要確認
 
         self.g10 = False
         self.g52 = [0, 0, 0, 0, 0]
@@ -39,6 +39,178 @@ class Modal:
         self.s = 0
         self.t = 1
         self.cc_level = 5
+
+    @property
+    def gr1(self):
+        return self.gr1_
+
+    @gr1.setter
+    def gr1(self, val: int):
+        assert val in {0, 1, 2, 3, 33, 75, 77, 78, 79}
+        self.gr1_ = val
+
+    @property
+    def gr2(self):
+        return self.gr2_
+
+    @gr2.setter
+    def gr2(self, val: int):
+        assert val in {17, 18, 19}
+        self.gr2_ = val
+
+    @property
+    def gr3(self):
+        return self.gr3_
+
+    @gr3.setter
+    def gr3(self, val: int):
+        assert val in {90, 91}
+        self.gr3_ = val
+
+    @property
+    def gr4(self):
+        return self.gr4_
+
+    @gr4.setter
+    def gr4(self, val: int):
+        assert val in {22, 23}
+        self.gr4_ = val
+
+    @property
+    def gr5(self):
+        return self.gr5_
+
+    @gr5.setter
+    def gr5(self, val: int):
+        assert val in {94, 95}
+        self.gr5_ = val
+
+    @property
+    def gr6(self):
+        return self.gr6_
+
+    @gr6.setter
+    def gr6(self, val: int):
+        assert val in {20, 21}
+        self.gr6_ = val
+
+    @property
+    def gr7(self):
+        return self.gr7_
+
+    @gr7.setter
+    def gr7(self, val: int):
+        assert val in {40, 41, 42}
+        self.gr7_ = val
+
+    @property
+    def gr8(self):
+        return self.gr8_
+
+    @gr8.setter
+    def gr8(self, val: int):
+        assert val in {43, 44, 49}
+        self.gr8_ = val
+
+    @property
+    def gr9(self):
+        return self.gr9_
+
+    @gr9.setter
+    def gr9(self, val: int):
+        assert val in {73, 74, 76, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89}
+        self.gr9_ = val
+
+    @property
+    def gr10(self):
+        return self.gr10_
+
+    @gr10.setter
+    def gr10(self, val: int):
+        assert val in {98, 99}
+        self.gr10_ = val
+
+    @property
+    def gr11(self):
+        return self.gr11_
+
+    @gr11.setter
+    def gr11(self, val: int):
+        assert val in {50, 51}
+        self.gr11_ = val
+
+    @property
+    def gr12(self):
+        return self.gr12_
+
+    @gr12.setter
+    def gr12(self, val: int):
+        assert val in {66, 67}
+        self.gr12_ = val
+
+    @property
+    def gr13(self):
+        return self.gr13_
+
+    @gr13.setter
+    def gr13(self, val: int):
+        assert val in {96, 97}
+        self.gr13_ = val
+
+    @property
+    def gr14(self):
+        return self.gr14
+
+    @gr14.setter
+    def gr14(self, val: int):
+        assert val in {54, 54.1, 55, 56, 57, 58, 59}
+        self.gr14_ = val
+
+    @property
+    def gr15(self):
+        return self.gr15_
+
+    @gr15.setter
+    def gr15(self, val: int):
+        assert val in {61, 62, 63, 64}
+        self.gr15_ = val
+
+    @property
+    def gr16(self):
+        return self.gr16_
+
+    @gr16.setter
+    def gr16(self, val: int):
+        assert val in {68, 69}
+        self.gr16_ = val
+
+    @property
+    def gr17(self):
+        return self.gr17_
+
+    @gr17.setter
+    def gr17(self, val: int):
+        assert val in {15, 16}
+        self.gr17_ = val
+
+    @property
+    def gr19(self):
+        return self.gr19_
+
+    @gr19.setter
+    def gr19(self, val: int):
+        assert val in {151, 152}
+        self.gr19_ = val
+
+    @property
+    def gr20(self):
+        return self.gr20_
+
+    @gr20.setter
+    def gr20(self, val: int):
+        assert val in {160, 161}
+        self.gr20_ = val
+
 
 class Programs:
     def __init__(self):

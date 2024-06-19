@@ -431,11 +431,11 @@ class Parser:
             return block_split
 
     @staticmethod
-    def get_val_pat():
+    def get_val_pat() -> str:
         return "([-+*/[\].#0-9]|SQRT|ABS|SIN|COS|TAN|ATAN|ROUND|FIX|FUP|BIN|BCD)+"
 
     @classmethod
-    def get_formula_pat(cls):
+    def get_formula_pat(cls) -> str:
         return f"({cls.get_val_pat}|EQ|NE|GT|LT|GE|LE|AND|OR)+"
 
     @classmethod

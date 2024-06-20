@@ -57,6 +57,7 @@ class Parser:
 
     def parse_gcode(self, block):
         sb = self.split_gcode(block)
+        args = self.get_ini_args()
         for a, v in sb:
             v = self.solve_value_or_none(v)
             if a == "G":
@@ -64,6 +65,16 @@ class Parser:
                 if gr == 1:
                     self.modal.gr1 = v
 
+    @staticmethod
+    def get_ini_args() -> dict:
+        addresses = ("A", "B", "C", "D", "E", "F", "H", "I", "J", "K",
+                     "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
+                     "V", "W", "X", "Y", "Z",
+                     "Ggr0", "Ggr1", "Ggr2", "Ggr3", "Ggr4", "Ggr5",
+                     "Ggr6", "Ggr7", "Ggr8", "Ggr9", "Ggr10", "Ggr11",
+                     "Ggr12", "Ggr13", "Ggr14", "Ggr15", "Ggr16",
+                     "Ggr17", "Ggr19", "Ggr20")
+        return {arg: [] for arg in addresses}
 
 
 

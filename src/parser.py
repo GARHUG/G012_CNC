@@ -65,6 +65,7 @@ class Parser:
                 if gr == 1:
                     self.modal.gr1 = v
 
+
     @staticmethod
     def get_ini_args() -> dict:
         addresses = ("A", "B", "C", "D", "E", "F", "H", "I", "J", "K",

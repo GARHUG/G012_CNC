@@ -56,7 +56,6 @@ class Parser:
         else:
             self.gcode(block)
 
-
     def gcode(self, block):
         sb = self.split_gcode(block)
         db = self.split_gcode_dict(sb)

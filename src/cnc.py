@@ -26,5 +26,8 @@ class CNC:
 
 
 class NCError(Exception):
+    def __init__(self, *args):
+        self.args = args
+
     def __str__(self):
-        return "問題が発生しました."
+        return f"{self.args}"

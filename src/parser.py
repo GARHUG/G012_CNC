@@ -5,6 +5,7 @@ import math
 import re
 from typing import Generator
 
+import cnc
 import state
 
 
@@ -53,29 +54,52 @@ class Parser:
             self.end(block)
         # Gコード
         else:
-            ...
+            self.gcode(block)
 
-    def parse_gcode(self, block):
+    def gcode(self, block):
         sb = self.split_gcode(block)
-        args = self.get_ini_args()
-        for a, v in sb:
-            v = self.solve_value_or_none(v)
-            if a == "G":
-                gr = self.get_group(v)
-                if gr == 1:
-                    self.modal.gr1 = v
-
-
-    @staticmethod
-    def get_ini_args() -> dict:
-        addresses = ("A", "B", "C", "D", "E", "F", "H", "I", "J", "K",
-                     "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
-                     "V", "W", "X", "Y", "Z",
-                     "Ggr0", "Ggr1", "Ggr2", "Ggr3", "Ggr4", "Ggr5",
-                     "Ggr6", "Ggr7", "Ggr8", "Ggr9", "Ggr10", "Ggr11",
-                     "Ggr12", "Ggr13", "Ggr14", "Ggr15", "Ggr16",
-                     "Ggr17", "Ggr19", "Ggr20")
-        return {arg: [] for arg in addresses}
+        db = self.split_gcode_dict(sb)
+        if "1" in db.keys():
+            self.modal.gr1 = db["1"][-1]
+        if "2" in db.keys():
+            self.modal.gr1 = db["2"][-1]
+        if "3" in db.keys():
+            self.modal.gr1 = db["3"][-1]
+        if "4" in db.keys():
+            self.modal.gr1 = db["4"][-1]
+        if "5" in db.keys():
+            self.modal.gr1 = db["5"][-1]
+        if "6" in db.keys():
+            self.modal.gr1 = db["6"][-1]
+        if "7" in db.keys():
+            self.modal.gr1 = db["7"][-1]
+        if "8" in db.keys():
+            self.modal.gr1 = db["8"][-1]
+        if "9" in db.keys():
+            self.modal.gr1 = db["9"][-1]
+        if "10" in db.keys():
+            self.modal.gr1 = db["10"][-1]
+        if "11" in db.keys():
+            self.modal.gr1 = db["11"][-1]
+        if "12" in db.keys():
+            self.modal.gr1 = db["12"][-1]
+        if "13" in db.keys():
+            self.modal.gr1 = db["13"][-1]
+        if "14" in db.keys():
+            self.modal.gr1 = db["14"][-1]
+        if "15" in db.keys():
+            self.modal.gr1 = db["15"][-1]
+        if "16" in db.keys():
+            self.modal.gr1 = db["16"][-1]
+        if "17" in db.keys():
+            self.modal.gr1 = db["17"][-1]
+        if "19" in db.keys():
+            self.modal.gr1 = db["19"][-1]
+        if "20" in db.keys():
+            self.modal.gr1 = db["20"][-1]
+        if "0" in db.keys():
+            if 1 < len(db["0"]):
+                raise cnc.NCError("GコードGroup0が複数ある時の挙動はサポートされていません．")
 
 
 
@@ -375,7 +399,9 @@ class Parser:
         enc = re.findall(cls.get_sub_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効な代入文です．: {block}")
-        return cls.split_len_check(block, [("#", enc[0][0]), ("=", enc[0][3])])
+        sb = [("#", enc[0][0]), ("=", enc[0][3])]
+        cls.check_split_len(block, sb)
+        return sb
 
     @classmethod
     def split_goto(cls, block: str) -> list:
@@ -383,7 +409,9 @@ class Parser:
         enc = re.findall(cls.get_goto_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効なGOTO文です．: {block}")
-        return cls.split_len_check(block, [("GOTO", enc[0][0])])
+        sb = [("GOTO", enc[0][0])]
+        cls.check_split_len(block, sb)
+        return sb
 
     @classmethod
     def split_if(cls, block: str) -> list:
@@ -394,7 +422,9 @@ class Parser:
         fml = enc[0][0]
         if fml[0] != "[" or fml[-1] != "]":
             raise NCParserError(f"式がカッコに囲まれていません．: {block}")
-        return cls.split_len_check(block, [("IF", fml), (enc[0][3])])
+        sb = [("IF", fml), (enc[0][3])]
+        cls.check_split_len(block, sb)
+        return sb
 
     @classmethod
     def split_while(cls, block: str) -> list:
@@ -405,7 +435,9 @@ class Parser:
         fml = enc[0][0]
         if fml[0] != "[" or fml[-1] != "]":
             raise NCParserError(f"式がカッコに囲まれていません．: {block}")
-        return cls.split_len_check(block, [("WHILE", fml), ("DO", enc[0][3])])
+        sb = [("WHILE", fml), ("DO", enc[0][3])]
+        cls.check_split_len(block, sb)
+        return sb
 
     @classmethod
     def split_do(cls, block: str) -> list:
@@ -413,7 +445,9 @@ class Parser:
         enc = re.findall(cls.get_do_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効なDO文です．: {block}")
-        return cls.split_len_check(block, [("DO", enc[0][0])])
+        sb = [("DO", enc[0][0])]
+        cls.check_split_len(block, sb)
+        return sb
 
     @classmethod
     def split_end(cls, block: str) -> list:
@@ -421,17 +455,21 @@ class Parser:
         enc = re.findall(cls.get_end_pat(), block)
         if len(enc) != 1:
             raise NCParserError(f"無効なEND文です．: {block}")
-        return cls.split_len_check(block, [("END", enc[0][0])])
+        sb = [("END", enc[0][0])]
+        cls.check_split_len(block, sb)
+        return sb
 
     @classmethod
     def split_gcode(cls, block: str) -> list:
         """[(アドレス, 値)]"""
         val_pat = cls.get_val_pat()
         enc = re.finditer(f"([A-Z])({val_pat})", block)
-        return cls.split_len_check(block, [(ad, val) for ad, val, _ in enc])
+        sb = [(ad, val) for ad, val, _ in enc]
+        cls.check_split_len(block, sb)
+        return sb
 
     @staticmethod
-    def split_len_check(block: str, block_split: list) -> list:
+    def check_split_len(block: str, block_split: list):
         join = []
         for i in block_split:
             for j in i:
@@ -439,8 +477,29 @@ class Parser:
         join = "".join(join)
         if block != join:
             raise NCParserError(f"アドレスが不です．: {block}")
-        else:
-            return block_split
+    @classmethod
+    def split_gcode_dict(cls, sb: list) -> dict:
+        """{アドレス: [値]}"""
+        result = cls.get_ini_args()
+        for address, value in sb:
+            if address == "G":
+                result[str(cls.get_group(value))].append(value)
+            else:
+                result[address].append(value)
+        return result
+
+
+
+    @staticmethod
+    def get_ini_args() -> dict:
+        addresses = ("A", "B", "C", "D", "E", "F", "H", "I", "J", "K",
+                     "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U",
+                     "V", "W", "X", "Y", "Z",
+                     "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+                     "10", "11", "12", "13", "14", "15", "16", "17",
+                     "19", "20")
+        return {arg: [] for arg in addresses}
+
 
     @staticmethod
     def get_val_pat() -> str:
@@ -759,7 +818,7 @@ class Reader:
             block = Parser.prepare(block)
 
 
-class NCParserError(Exception):
+class NCParserError(cnc.NCError):
     def __init__(self, *args):
         self.args = args
 

@@ -28,6 +28,7 @@ class Modal:
 
         self.g10 = False
         self.g52 = [0, 0, 0, 0, 0]
+        self.g68 = [0, 0, 0, 0, 0]
 
         self.b = 0
         self.d = 0

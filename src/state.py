@@ -1,6 +1,7 @@
 class Positions:
-    def __init__(self):
-        self.positions = []
+    def __init__(self, coordinates):
+        self.positions = [0, 0, 0, 0, 0]
+        self.coordinates = coordinates
 
 
 class Modal:
@@ -17,7 +18,7 @@ class Modal:
         self.gr9_ = 80
         self.gr10_ = 98
         self.gr11_ = 50
-        self.gr12_ = 67
+        self.gr12_ = [67]
         self.gr13_ = 97
         self.gr14_ = 54
         self.gr15_ = 64
@@ -27,6 +28,7 @@ class Modal:
         self.gr20_ = 160  # 初期値要確認
 
         self.g10 = False
+        self.g29 = [0, 0, 0, 0, 0]
         self.g52 = [0, 0, 0, 0, 0]
         self.g68 = [0, 0, 0, 0, 0]
 
@@ -40,6 +42,8 @@ class Modal:
         self.s = 0
         self.t = 1
         self.cc_level = 5
+
+        self.do = [[None, None, None]]
 
     @property
     def gr1(self):

@@ -1,4 +1,5 @@
-"""2024.06.18"""
+"""2024.07.28"""
+"""while_, do, end修正中"""
 
 from enum import Enum
 import math
@@ -18,28 +19,23 @@ class Parser:
         self.variables = variables
         # メモ
         self.index = []
-        self.g29 = [0, 0, 0, 0, 0]
-        self.do1 = None
-        self.do2 = None
-        self.do3 = None
 
     def mdi(self, block: str):
         self.parse(block)
 
-    def cycle_start(self, program_num: int, row: int) -> Generator:
+    def set_program(self, program_num: int):
         if not self.programs.is_exist(program_num):
-            raise NCParserError("プログラムが存在しません．")
-        if self.get_while_range(program_num, row) != (-1, -1):
-            raise NCParserError("WHILE文中からは開始出来ません．")
+            raise NCParserError("プログラムが潜在しません．")
         self.index.clear()
-        self.index.append({"p": program_num, "r": row})
-        for block in self.next():
-            self.parse(block)
-            yield
+        self.index.append({"p": program_num, "r": 0})
 
-    def parse(self):
-        """indexを更新する"""
-        block = self.programs.read_block(self.p, self.r)
+    def next(self):
+        self.parse(self.programs.read_block(self.p, self.r))
+
+    def reset(self):
+        self.index.clear()
+
+    def parse(self, block: str):
         block = self.prepare(block)
         self.check_mixed_gcode_and_macro(block)
         while not block:  # 空行
@@ -122,12 +118,7 @@ class Parser:
                 continue
             n = self.to_int(self.solve_value(pat.group(1)))
             if n == target_n:
-                row = self.r + i + 1
-                if self.can_jump(self.p, self.r, row):
-                    self.r = row
-                    return
-                else:
-                    raise NCParserError("WHILE文中には飛べません．")
+                self.r += i + 1
         # 上を検索
         for i, block in enumerate(program[:self.r]):
             block = self.prepare(block)
@@ -136,11 +127,8 @@ class Parser:
                 continue
             n = self.to_int(self.solve_value(pat.group(1)))
             if n == target_n:
-                if self.can_jump(self.p, self.r, i):
                     self.r = i
                     return
-                else:
-                    raise NCParserError("WHILE文中には飛べません．")
         # 見つからない
         raise NCParserError("シーケンス番号が見つかりません．")
 
@@ -174,6 +162,10 @@ class Parser:
                     else:
                         raise NCParserError("WHILE文中には飛べません．")
 
+    def do(self, block: str):
+        num = self.to_int(self.solve_value(self.split_do(block)[0][1]))
+        self.modal.do[num - 1] = self.r
+
     def end(self, block: str):
         program = self.programs.read(self.p)
         target_do = self.to_int(self.solve_value(self.split_end(block)[0][1]))
@@ -193,6 +185,8 @@ class Parser:
 
     def nl(self):
         self.r += 1
+        while self.prepare(self.programs.read_block(self.p, self.r)) == "":
+            self.r += 1
 
     @classmethod
     def prepare(cls, block: str) -> str:
@@ -269,31 +263,6 @@ class Parser:
         else:
             raise NCParserError(f"このGコードはサポートしていません．: {g}")
 
-    def get_while_range(self, program: int, row: int) -> tuple:
-        """
-        一番内側のWHILE文とEND文の行番号を返す．
-        start, endの初期値は-1
-        :return start, end
-        """
-        program = self.programs.read(program)
-        for i, block1 in enumerate(program[row-1::-1]):
-            i += 1
-            block1 = self.prepare(block1)
-            if not self.is_while_block(block1):
-                continue
-            do = self.to_int(self.solve_value(self.split_while(block1)[1][1]))
-            for j, block2 in enumerate(program[row-i:]):
-                block2 = self.prepare(block2)
-                if not self.is_end_block(block2):
-                    continue
-                if do != self.to_int(self.solve_value(self.split_end(block2)[0][1])):
-                    continue
-                if i < j:
-                    return row - i, row - i + j
-                raise NCParserError(f"END文が見つかりません．: {program[row-i]}")
-        else:
-            return -1, -1
-
     @staticmethod
     def is_sub_block(block: str) -> bool:
         """事前にParse.prepare()使用の事"""
@@ -348,18 +317,6 @@ class Parser:
         else:
             return True
 
-    def is_in_while(self, program: int, row: int) -> bool:
-        """WHILE文,END文はFalse.GOTO文で飛べるか？で判断．"""
-        depth = 0
-        for i, block in enumerate(self.programs.read(program)):
-            block = self.prepare(block)
-            if self.is_end_block(block):
-                depth -= 1
-            if row == i:
-                return depth == 0
-            if self.is_while_block(block):
-                depth += 1
-
     @classmethod
     def check_mixed_gcode_and_macro(cls, block: str):
         is_macro = False
@@ -387,12 +344,6 @@ class Parser:
         block = re.sub(f"O{cls.get_val_pat()}", "", block)
         if block:
             raise NCParserError("Gコードとマクロが混在しています．")
-
-    def can_jump(self, program: int, row1: int, row2):
-        """プログラム番号{program}の行{row1}から行{row2}にGOTO,ENDで飛べるか？"""
-        s1, e1 = self.get_while_range(program, row1)
-        s2, e2 = self.get_while_range(program, row2)
-        return s1 >= s2 and e1 <= e2
 
     @classmethod
     def split_sub(cls, block: str) -> list:
@@ -471,6 +422,7 @@ class Parser:
 
     @staticmethod
     def check_split_len(block: str, block_split: list):
+        """splitした時、アドレスを取りこぼしてないかチェック"""
         join = []
         for i in block_split:
             for j in i:
@@ -478,6 +430,7 @@ class Parser:
         join = "".join(join)
         if block != join:
             raise NCParserError(f"アドレスが不です．: {block}")
+
     @classmethod
     def split_gcode_dict(cls, sb: list) -> dict:
         """{アドレス: [値]}"""
@@ -488,8 +441,6 @@ class Parser:
             else:
                 result[address].append(value)
         return result
-
-
 
     @staticmethod
     def get_ini_args() -> dict:
@@ -531,7 +482,6 @@ class Parser:
         vp = cls.get_val_pat()
         fp = cls.get_formula_pat()
         return f"WHILE({fp})DO({vp})"
-
 
     @classmethod
     def get_do_pat(cls) -> str:
@@ -768,6 +718,7 @@ class Parser:
 
     @staticmethod
     def to_int(num: str or float) -> int:
+        """整数であることを保証, #0は許可しない"""
         if num is None:
             raise NCParserError("数値が#0です．")
         i = int(num)
@@ -795,30 +746,6 @@ class Parser:
         self.index[-1]["row"] = val
 
 
-class Reader:
-    def __init__(self, parser: Parser, state: State):
-        self.parser = parser
-        self.state = state
-        self.index = []
-
-    def cycle_start(self, program_num: int, row: int) -> Generator:
-        self.index = []
-        self.index.append({"program_num": program_num, "row": row})
-        for block in self.next():
-            yield block
-
-    def next(self) -> Generator:
-        while True:
-            assert 1 <= len(self.index)
-            try:
-                block = self.state.programs.read_block(
-                    self.index[-1]["program_num"],
-                    self.index[-1]["row"])
-            except IndexError:
-                raise NCParserError("ファイルの終端です．")
-            block = Parser.prepare(block)
-
-
 class NCParserError(cnc.NCError):
     def __init__(self, *args):
         self.args = args
@@ -827,98 +754,5 @@ class NCParserError(cnc.NCError):
         return self.args
 
 
-class GcodeList:
-    GROUP0 = {4, 4.1, 5, 5.1, 5.4, 7.1, 8, 9, 10, 10.6, 11, 24, 27, 28, 28.2,
-              29, 30, 30.2, 31, 32, 39, 52, 53, 53.2, 60, 63, 65, 72.1, 72.2,
-              75, 76, 77, 91.1, 92, 92.1, 107}
-    GROUP1 = {0, 1, 2, 3}
-    GROUP2 = {17, 18, 19}
-    GROUP3 = {90, 91}
-    GROUP4 = {22, 23}
-    GROUP5 = {}
-    GROUP6 = {20, 21, 70, 71}
-    GROUP7 = {40, 41, 42}
-    GROUP8 = {}
-    GROUP9 = {}
-    GROUP10 = {}
-    GROUP11 = {50, 51}
-    GROUP12 = {66, 66.1, 67}
-    GROUP13 = {}
-    GROUP14 = {54, 54.1, 55, 56, 57, 58, 59}
-    GROUP15 = {61, 62, 64}
-    GROUP16 = {68, 69, 84, 85}
-    GROUP17 = {15, 16}
-    GROUP18 = {40.1, 41.1, 42.1, 150, 151, 152}
-    GROUP19 = {}
-    GROUP20 = {}
-    GROUP38 = {13, 14}
-    GROUP42 = {13.2, 14.2}
 
 
-class Address(Enum):
-    A = "A"
-    B = "B"
-    C = "C"
-    D = "D"
-    E = "E"
-    F = "F"
-    G = "G"
-    H = "H"
-    I = "I"
-    J = "J"
-    K = "K"
-    L = "L"
-    M = "M"
-    N = "N"
-    O = "O"
-    P = "P"
-    Q = "Q"
-    R = "R"
-    S = "S"
-    T = "T"
-    U = "U"
-    V = "V"
-    W = "W"
-    X = "X"
-    Y = "Y"
-    Z = "Z"
-    IF = "IF"
-    GOTO = "GOTO"
-    THEN = "THEN"
-    WHILE = "WHILE"
-    DO = "DO"
-    END = "END"
-    SUB = "="
-
-
-
-
-"""
-class MissingAddressNCError(Exception):
-    def __init__(self, arg):
-        self.arg = arg
-
-    def __str__(self):
-        return f"アドレス{self.arg}が見つかりません．"
-
-
-class MissingSequenceNCReaderError(Exception):
-    def __init__(self, arg: int):
-        self.arg = arg
-
-    def __str__(self):
-        return f"シーケンス番号{self.arg}が見つかりません．"
-
-
-class EndOfProgramNCReaderError(Exception):
-    def __str__(self):
-        return "プログラム終端です．"
-
-
-class InvalidAddressNCError(Exception):
-    def __init__(self, arg):
-        self.arg = arg
-
-    def __str__(self):
-        return f"アドレス{self.arg}は不正です．"
-"""

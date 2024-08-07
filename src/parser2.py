@@ -10,6 +10,7 @@ import cnc
 import state
 
 
+
 class Parser:
     def __init__(self, modal: state.Modal, programs: state.Programs,
                  variables: state.Variables):
